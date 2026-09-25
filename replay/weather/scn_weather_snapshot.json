@@ -1,0 +1,44 @@
+{
+  "synthetic": true,
+  "source": "synthetic fixture, not live data",
+  "note": "Hand-authored TrailGuard replay fixture (spec 17): an Open-Meteo-shaped hourly response for the synthetic route area, used instead of live weather so Replay Mode and the benchmark are reproducible and independent of the weather on the day. Values are invented. precipitation_probability arrives in percent ('%' in hourly_units, exactly as open-meteo reports it) and must be divided by 100 to obtain the 0..1 probability the TrailGuard schemas use.",
+  "scenario_date": "2026-05-18",
+  "latitude": 46.081,
+  "longitude": 7.772,
+  "elevation": 1379,
+  "generationtime_ms": 0.42,
+  "timezone": "Europe/Zurich",
+  "timezone_abbreviation": "GMT+2",
+  "utc_offset_seconds": 7200,
+  "generated_at": "2026-05-18T10:00:00Z",
+  "hourly_units": {
+    "time": "iso8601",
+    "temperature_2m": "°C",
+    "precipitation_probability": "%",
+    "wind_speed_10m": "km/h",
+    "wind_gusts_10m": "km/h"
+  },
+  "hourly": {
+    "time": [
+      "2026-05-18T06:00",
+      "2026-05-18T07:00",
+      "2026-05-18T08:00",
+      "2026-05-18T09:00",
+      "2026-05-18T10:00",
+      "2026-05-18T11:00",
+      "2026-05-18T12:00",
+      "2026-05-18T13:00",
+      "2026-05-18T14:00",
+      "2026-05-18T15:00",
+      "2026-05-18T16:00",
+      "2026-05-18T17:00",
+      "2026-05-18T18:00",
+      "2026-05-18T19:00"
+    ],
+    "temperature_2m": [6.8, 7.4, 9.0, 10.6, 12.0, 13.1, 14.2, 15.0, 15.6, 15.9, 15.7, 14.8, 13.2, 11.6],
+    "precipitation_probability": [0, 0, 0, 2, 5, 5, 8, 8, 10, 12, 15, 18, 20, 15],
+    "wind_speed_10m": [2.6, 3.4, 4.8, 6.5, 8.4, 10.1, 11.6, 12.4, 13.1, 13.6, 13.2, 12.1, 10.4, 8.6],
+    "wind_gusts_10m": [7.1, 9.0, 11.6, 14.2, 17.5, 20.4, 23.1, 24.6, 26.2, 27.4, 26.5, 24.1, 20.8, 17.2],
+    "weather_code": [0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 2, 1]
+  }
+}

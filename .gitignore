@@ -1,0 +1,40 @@
+# Secrets
+.env
+.env.*
+*.key
+*.pem
+secrets/
+credentials.json
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Model / data artifacts
+models/
+checkpoints/
+outputs/
+data/private/
+
+# OS
+.DS_Store
+Thumbs.db
+!.env.example

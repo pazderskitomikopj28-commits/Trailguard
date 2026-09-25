@@ -1,0 +1,37 @@
+[project]
+name = "trailguard"
+version = "0.1.0"
+description = "Predictive Outdoor Safety Skill: forward-looking spatiotemporal safety reasoning for hiking agents (DGX Spark hackathon)."
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.13",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# Phase 0 installs the base dependencies only. Everything the frozen spec (23)
+# puts in the technical stack lives here, in an extra named for the phase that
+# first needs it, so a later phase can opt in without widening the Phase 0
+# install footprint -- and without editing the base dependency list.
+dev = [
+    "pytest>=9.1",
+]
+# Route reading and geometry (Phase 1: GPX parsing, polyline distance, projection).
+route = [
+    "gpxpy>=1.6",
+    "shapely>=2.0",
+    "pyproj>=3.7",
+]
+# Model transports (Phase 3 StepFun Step 5 Preview, Phase 4 the local DGX Spark model).
+providers = [
+    "openai>=1.55",
+    "python-dotenv>=1.0",
+]
+# Benchmark/demo presentation (Phase 6 demo UI).
+demo = [
+    "streamlit>=1.40",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

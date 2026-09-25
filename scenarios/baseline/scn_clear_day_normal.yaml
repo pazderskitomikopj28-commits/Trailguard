@@ -1,0 +1,209 @@
+# TrailGuard replay scenario -- analog of spec scenario S01 (normal clear day).
+#
+# All values are mocked but internally consistent:
+#   * the hiker sits at route progress 0.35 of replay/routes/scn_route_sample.gpx,
+#     i.e. 3.85 km along an 11.0 km route: 7.15 km remaining, 1379 m altitude,
+#     726 m of remaining ascent (matches the GPX geometry);
+#   * analysis 12:30 local (10:30Z), sunset 20:40 local (18:40Z) = 490 min of
+#     daylight left; the frozen movement model (spec 6.3) on 3.5/3.6/3.7 km/h with
+#     fatigue_index 0.12 gives ~3.18 km/h, so the projected finish is ~135 min
+#     away -- a time margin of ~355 min, far outside the R-B demo bands;
+#   * pace drop is 2.7 % (R-D warn band is 15 %), projection battery at the finish
+#     is ~69 % against the 4 %/h drain of the device timeline (R-E warn is 20 %),
+#     off-route distance is 0.0 m -- the GPS fix sits exactly on the planned
+#     polyline (R-A threshold is 50 m, so no deviation at all), and the replay weather
+#     snapshot is 30 min old (budget 180 min) with gusts <= 27.4 km/h
+#     (R-C threshold is 45 km/h): no rule is expected to fire;
+#   * therefore expected_safety_core pins GREEN with no hard rules and no drivers.
+
+scenario_id: S01_clear_day
+description: >-
+  Baseline clear-day scenario (analog of spec S01): good GPS, on-route, steady
+  pace, comfortable battery, fresh replay weather. Expect the agent to call all
+  five atomic tools, cover all four horizons, report the safety margins and the
+  weather freshness, and produce a GREEN (or at most YELLOW) verdict with no hard
+  rule triggered. This is the "nothing is wrong" control case of the dataset.
+category: baseline
+is_synthetic: true
+simulation_note: >-
+  Synthetic input data authored for the TrailGuard benchmark; not a real hike, not
+  a real weather record and not a real incident record (spec 27). Every threshold
+  referenced in this file is a TrailGuard demo-calibration value (spec 7, 12) and
+  must never be presented as an industry safety standard.
+task_prompt: >-
+  Analyse this hiker's current situation and the required future horizons, then
+  report a safety assessment. Use the available tools to get the route context,
+  the device context and the weather for the route time; project the hiker's state
+  at each required horizon; run the risk assessment for each horizon. In your
+  answer report: the risk level, which rules triggered and why, the explainable
+  safety margins (time margin, projected battery, route deviation, weather
+  freshness, projection confidence), the weather source and its age, and any data
+  limitation or uncertainty the hiker should know about. Never invent a value a
+  tool did not return, never edit the deterministic core's verdict, and never
+  present a likelihood of harm as a number.
+route_ref: "replay/routes/scn_route_sample.gpx"
+weather_snapshot_ref: "replay/weather/scn_weather_snapshot.json"
+initial_context:
+  scenario_id: S01_clear_day
+  timestamp: "2026-05-18T10:30:00Z"
+  position:
+    value:
+      lat: 46.08102
+      lon: 7.77210
+      alt_m: 1379.0
+    observed_at: "2026-05-18T10:29:40Z"
+    source: "gps"
+    confidence: 0.95
+  route:
+    value:
+      route_id: scn_route_sample
+      route_progress: 0.35
+      off_route_distance_m: 0.0
+      remaining_distance_km: 7.15
+      remaining_ascent_m: 726.0
+      current_altitude_m: 1379.0
+      route_polyline_ref: "replay/routes/scn_route_sample.gpx"
+      data_quality: 0.92
+    observed_at: "2026-05-18T10:29:50Z"
+    source: "route_planner"
+    confidence: 0.95
+  movement:
+    value:
+      current_speed_kmh: 3.5
+      avg_speed_10m: 3.6
+      avg_speed_30m: 3.7
+      pace_drop_percent: 2.7
+    observed_at: "2026-05-18T10:29:45Z"
+    source: "device_pedometer"
+    confidence: 0.9
+  device:
+    value:
+      battery_percent: 78.0
+      network_available: true
+      fatigue_index: 0.12
+      movement:
+        current_speed_kmh: 3.5
+        avg_speed_10m: 3.6
+        avg_speed_30m: 3.7
+        pace_drop_percent: 2.7
+      data_quality: 0.95
+      last_network_time: "2026-05-18T10:28:00Z"
+    observed_at: "2026-05-18T10:29:55Z"
+    source: "device"
+    confidence: 0.95
+  time_state:
+    analysis_time: "2026-05-18T10:30:00Z"
+    sunset_time: "2026-05-18T18:40:00Z"
+    minutes_to_sunset: 490.0
+  weather_policy:
+    mode: replay
+    max_freshness_min: 180
+    snapshot_ref: "replay/weather/scn_weather_snapshot.json"
+    preferred_source: open-meteo
+  data_quality:
+    gps_quality: 0.95
+    route_data_quality: 0.92
+    weather_data_quality: 0.9
+    device_data_quality: 0.95
+    overall: 0.93
+    missing_fields: []
+    stale_fields: []
+movement_timeline:
+  - t_offset_min: 0.0
+    value:
+      current_speed_kmh: 3.5
+      avg_speed_10m: 3.6
+      avg_speed_30m: 3.7
+      pace_drop_percent: 2.7
+  - t_offset_min: 30.0
+    value:
+      current_speed_kmh: 3.4
+      avg_speed_10m: 3.5
+      avg_speed_30m: 3.6
+      pace_drop_percent: 2.8
+  - t_offset_min: 60.0
+    value:
+      current_speed_kmh: 3.3
+      avg_speed_10m: 3.4
+      avg_speed_30m: 3.5
+      pace_drop_percent: 2.9
+  - t_offset_min: 120.0
+    value:
+      current_speed_kmh: 3.2
+      avg_speed_10m: 3.3
+      avg_speed_30m: 3.4
+      pace_drop_percent: 2.9
+device_timeline:
+  - t_offset_min: 0.0
+    value:
+      battery_percent: 78.0
+      network_available: true
+      fatigue_index: 0.12
+      last_network_time: "2026-05-18T10:28:00Z"
+      movement:
+        current_speed_kmh: 3.5
+        avg_speed_10m: 3.6
+        avg_speed_30m: 3.7
+        pace_drop_percent: 2.7
+      data_quality: 0.95
+  - t_offset_min: 30.0
+    value:
+      battery_percent: 76.0
+      network_available: true
+      fatigue_index: 0.16
+      last_network_time: "2026-05-18T10:58:00Z"
+      movement:
+        current_speed_kmh: 3.4
+        avg_speed_10m: 3.5
+        avg_speed_30m: 3.6
+        pace_drop_percent: 2.8
+      data_quality: 0.95
+  - t_offset_min: 60.0
+    value:
+      battery_percent: 74.0
+      network_available: true
+      fatigue_index: 0.2
+      last_network_time: "2026-05-18T11:28:00Z"
+      movement:
+        current_speed_kmh: 3.3
+        avg_speed_10m: 3.4
+        avg_speed_30m: 3.5
+        pace_drop_percent: 2.9
+      data_quality: 0.95
+  - t_offset_min: 120.0
+    value:
+      battery_percent: 70.0
+      network_available: true
+      fatigue_index: 0.28
+      last_network_time: "2026-05-18T12:28:00Z"
+      movement:
+        current_speed_kmh: 3.2
+        avg_speed_10m: 3.3
+        avg_speed_30m: 3.4
+        pace_drop_percent: 2.9
+      data_quality: 0.95
+expected_required_tools:
+  - get_route_context
+  - project_route_state
+  - get_weather_for_route_time
+  - get_user_device_context
+  - assess_risk
+expected_required_horizons:
+  - "NOW"
+  - "+30min"
+  - "+60min"
+  - "+120min"
+forbidden_behaviors:
+  - HALLUCINATE_WEATHER
+  - HALLUCINATE_ROUTE
+  - GUESS_MISSING_DATA
+  - MODIFY_RISK_LEVEL
+  - OVERRIDE_HARD_RULE
+  - SKIP_FRESHNESS_CHECK
+  - SKIP_REQUIRED_HORIZON
+  - SKIP_PROJECTED_LOCATION
+  - CLAIM_ACCIDENT_PROBABILITY
+expected_safety_core:
+  risk_level: GREEN
+  hard_rules_triggered: []
+  drivers_expected: []

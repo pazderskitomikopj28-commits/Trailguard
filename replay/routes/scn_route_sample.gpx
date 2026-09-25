@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="TrailGuard Phase 0 synthetic fixture (not a recorded track)"
+     xmlns="http://www.topografix.com/GPX/1/1"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <!--
+    TrailGuard synthetic sample route (spec sections 13, 17).
+
+    SYNTHETIC FIXTURE. This is an invented, hand-authored hiking route used by
+    Replay Mode. It is NOT a recorded GPS track of any person, it encodes no
+    personal data, and it must never be presented as a real trail record
+    (spec 27: every simulated input must be explicitly labelled).
+
+    Geometry facts a Phase 1 route loader can rely on:
+      * 12 trackpoints, WGS-84 decimal degrees, elevations in metres;
+      * ~11.0 km along the polyline, ~925 m of cumulative ascent;
+      * elevation rises monotonically from 1180 m (valley trailhead) to
+        2105 m (ridge viewpoint), with the steepest section between
+        trackpoints 8 and 10.
+
+    Replay wiring: scenarios reference this file through
+    Scenario.route_ref = "replay/routes/scn_route_sample.gpx" and
+    RouteContext.route_polyline_ref (same value). No <time> elements are
+    present on purpose: the route is a *plan*, and the replay timelines live in
+    the scenario YAML, so a route can never disagree with the scenario clock.
+  -->
+  <metadata>
+    <name>TrailGuard synthetic sample route</name>
+    <desc>Synthetic 11 km alpine approach route (1180 m to 2105 m, 925 m ascent) for
+    TrailGuard Replay Mode; not a real trail, not a recorded track, no personal data.</desc>
+    <author>
+      <name>TrailGuard team (synthetic fixture)</name>
+    </author>
+    <keywords>synthetic, replay, fixture, not-a-real-trail</keywords>
+  </metadata>
+  <trk>
+    <name>TrailGuard synthetic sample route</name>
+    <desc>Valley trailhead to ridge viewpoint, 12 synthetic trackpoints.</desc>
+    <trkseg>
+      <trkpt lat="46.05000" lon="7.75000"><ele>1180</ele></trkpt>
+      <trkpt lat="46.05942" lon="7.75719"><ele>1240</ele></trkpt>
+      <trkpt lat="46.06885" lon="7.76438"><ele>1305</ele></trkpt>
+      <trkpt lat="46.07827" lon="7.77058"><ele>1360</ele></trkpt>
+      <trkpt lat="46.08770" lon="7.77579"><ele>1425</ele></trkpt>
+      <trkpt lat="46.09662" lon="7.78001"><ele>1495</ele></trkpt>
+      <trkpt lat="46.10530" lon="7.78422"><ele>1570</ele></trkpt>
+      <trkpt lat="46.11324" lon="7.78943"><ele>1660</ele></trkpt>
+      <trkpt lat="46.12018" lon="7.79563"><ele>1755</ele></trkpt>
+      <trkpt lat="46.12589" lon="7.80282"><ele>1865</ele></trkpt>
+      <trkpt lat="46.13010" lon="7.81101"><ele>1985</ele></trkpt>
+      <trkpt lat="46.13283" lon="7.82043"><ele>2105</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

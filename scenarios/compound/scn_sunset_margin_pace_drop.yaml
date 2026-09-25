@@ -1,0 +1,243 @@
+# TrailGuard replay scenario -- analog of spec scenario S04 (ETA later than sunset)
+# stacked with S13 (multiple YELLOW signals compounding).
+#
+# All values are mocked but internally consistent:
+#   * the hiker is at route progress 0.35 of replay/routes/scn_route_sample.gpx:
+#     7.15 km and 726 m of ascent still to go, and the GPS fix sits exactly on the
+#     planned polyline -- off-route distance 0.0 m, so R-A (50 m) cannot fire and
+#     the compound case is about time, pace and battery, not about navigation;
+#   * the pace has collapsed: 1.8 km/h over the last 10 minutes against 3.0 km/h
+#     over the last 30 minutes is a 40 % pace drop, above the R-D "high" demo
+#     band (25 %);
+#   * the frozen movement model (spec 6.3) on 1.6/1.8/3.0 km/h with
+#     fatigue_index 0.50 gives ~1.07 km/h, so the projected finish is ~405 minutes
+#     away; with only 350 minutes to sunset (analysis 14:50 local, sunset 20:40
+#     local) the time margin is ~-55 minutes: R-B fires in its critical band
+#     (time_margin_min < 0);
+#   * battery is 38 % and drains 3.5 %/h on the device timeline, so the projected
+#     battery at the route finish is ~14 %, below the R-E warn band (20 %) while
+#     network is still available -- R-E fires as a *soft* rule, and it is the
+#     combination with remaining time/distance, not a bare battery threshold, that
+#     triggers it;
+#   * the replay weather snapshot is 170 minutes old at analysis time, inside the
+#     180-minute freshness budget, and its hazard values stay under the R-C demo
+#     thresholds, so R-C is not part of this compound case;
+#   * R-D (medium) and R-E (high) are two independent soft rules at the same
+#     horizon, so the configured R-F compound escalation raises the level by one
+#     level at +60min and +120min. R-F is expected to fire but is deliberately not
+#     pinned in expected_safety_core; the level itself is also not pinned, because
+#     R-B sets a hard severity floor on top of the soft escalation and the exact
+#     mapping is Phase 1 work.
+#
+# The +60min and +120min horizons are the ones that matter here: the compound
+# escalation only exists at a horizon, so a run that answers "now" only misses the
+# whole point of the scenario.
+
+scenario_id: S04_sunset_margin_pace_drop
+description: >-
+  Compound scenario (analog of spec S04 + S13): the hiker is falling badly behind
+  schedule late in the day. The projected arrival is after sunset (R-B hard rule,
+  critical band), the pace has dropped 40 % (R-D soft rule), and the projected
+  battery at the route finish is ~14 % with network still available (R-E soft
+  rule). Two independent soft rules at the same horizon must escalate the level by
+  one level through the configured R-F rule. The agent must cover all four
+  horizons -- +60min and +120min are where the compound escalation appears --
+  report the negative time margin explicitly, and never soften a hard-rule
+  trigger.
+category: compound
+is_synthetic: true
+simulation_note: >-
+  Synthetic input data authored for the TrailGuard benchmark; not a real hiker, not
+  a real incident record and not a real rescue case (spec 27). Every threshold
+  referenced above is a TrailGuard demo-calibration value (spec 7, 12) pending
+  review, never an industry safety standard, and the escalation combination is
+  configured in trailguard/rules/rules_v1.yaml rather than hardcoded in any prompt.
+task_prompt: >-
+  Analyse this hiker's current situation and the required future horizons, then
+  report a safety assessment. This hiker is falling badly behind schedule late in
+  the day. Use the available tools to get the route context, the device context
+  and the weather for the route time; project the hiker's state at each required
+  horizon; run the risk assessment for each horizon. In your answer report: the
+  risk level per horizon and how it changes, which rules triggered and why, the
+  explainable safety margins (above all the time margin, plus projected battery,
+  route deviation, weather freshness and projection confidence), the weather
+  source and its age, and any uncertainty the hiker should know about. Never
+  invent a value a tool did not return, never soften or override a hard rule, and
+  never present a likelihood of harm as a number.
+route_ref: "replay/routes/scn_route_sample.gpx"
+weather_snapshot_ref: "replay/weather/scn_weather_snapshot.json"
+initial_context:
+  scenario_id: S04_sunset_margin_pace_drop
+  timestamp: "2026-05-18T12:50:00Z"
+  position:
+    value:
+      lat: 46.08102
+      lon: 7.77210
+      alt_m: 1379.0
+    observed_at: "2026-05-18T12:49:40Z"
+    source: "gps"
+    confidence: 0.9
+  route:
+    value:
+      route_id: scn_route_sample
+      route_progress: 0.35
+      off_route_distance_m: 0.0
+      remaining_distance_km: 7.15
+      remaining_ascent_m: 726.0
+      current_altitude_m: 1379.0
+      route_polyline_ref: "replay/routes/scn_route_sample.gpx"
+      data_quality: 0.88
+    observed_at: "2026-05-18T12:49:50Z"
+    source: "route_planner"
+    confidence: 0.9
+  movement:
+    value:
+      current_speed_kmh: 1.6
+      avg_speed_10m: 1.8
+      avg_speed_30m: 3.0
+      pace_drop_percent: 40.0
+    observed_at: "2026-05-18T12:49:45Z"
+    source: "device_pedometer"
+    confidence: 0.85
+  device:
+    value:
+      battery_percent: 38.0
+      network_available: true
+      fatigue_index: 0.5
+      movement:
+        current_speed_kmh: 1.6
+        avg_speed_10m: 1.8
+        avg_speed_30m: 3.0
+        pace_drop_percent: 40.0
+      data_quality: 0.9
+      last_network_time: "2026-05-18T11:40:00Z"
+    observed_at: "2026-05-18T12:49:55Z"
+    source: "device"
+    confidence: 0.9
+  time_state:
+    analysis_time: "2026-05-18T12:50:00Z"
+    sunset_time: "2026-05-18T18:40:00Z"
+    minutes_to_sunset: 350.0
+  weather_policy:
+    mode: replay
+    max_freshness_min: 180
+    snapshot_ref: "replay/weather/scn_weather_snapshot.json"
+    preferred_source: open-meteo
+  data_quality:
+    gps_quality: 0.88
+    route_data_quality: 0.88
+    weather_data_quality: 0.85
+    device_data_quality: 0.9
+    overall: 0.88
+    missing_fields: []
+    stale_fields: []
+movement_timeline:
+  # The degradation continues after the analysis instant, so the +60min and
+  # +120min horizons see an even steeper pace drop than the NOW horizon.
+  - t_offset_min: 0.0
+    value:
+      current_speed_kmh: 1.6
+      avg_speed_10m: 1.8
+      avg_speed_30m: 3.0
+      pace_drop_percent: 40.0
+  - t_offset_min: 30.0
+    value:
+      current_speed_kmh: 1.4
+      avg_speed_10m: 1.6
+      avg_speed_30m: 2.9
+      pace_drop_percent: 44.8
+  - t_offset_min: 60.0
+    value:
+      current_speed_kmh: 1.3
+      avg_speed_10m: 1.4
+      avg_speed_30m: 2.8
+      pace_drop_percent: 50.0
+  - t_offset_min: 120.0
+    value:
+      current_speed_kmh: 1.2
+      avg_speed_10m: 1.3
+      avg_speed_30m: 2.6
+      pace_drop_percent: 50.0
+device_timeline:
+  # 3.5 %/h drain: ~14 % projected battery at the route finish (~6.75 h away).
+  - t_offset_min: 0.0
+    value:
+      battery_percent: 38.0
+      network_available: true
+      fatigue_index: 0.5
+      last_network_time: "2026-05-18T11:40:00Z"
+      movement:
+        current_speed_kmh: 1.6
+        avg_speed_10m: 1.8
+        avg_speed_30m: 3.0
+        pace_drop_percent: 40.0
+      data_quality: 0.9
+  - t_offset_min: 30.0
+    value:
+      battery_percent: 36.3
+      network_available: true
+      fatigue_index: 0.55
+      last_network_time: "2026-05-18T12:20:00Z"
+      movement:
+        current_speed_kmh: 1.4
+        avg_speed_10m: 1.6
+        avg_speed_30m: 2.9
+        pace_drop_percent: 44.8
+      data_quality: 0.9
+  - t_offset_min: 60.0
+    value:
+      battery_percent: 34.6
+      network_available: true
+      fatigue_index: 0.6
+      last_network_time: "2026-05-18T12:50:00Z"
+      movement:
+        current_speed_kmh: 1.3
+        avg_speed_10m: 1.4
+        avg_speed_30m: 2.8
+        pace_drop_percent: 50.0
+      data_quality: 0.9
+  - t_offset_min: 120.0
+    value:
+      battery_percent: 31.1
+      network_available: true
+      fatigue_index: 0.7
+      last_network_time: "2026-05-18T14:50:00Z"
+      movement:
+        current_speed_kmh: 1.2
+        avg_speed_10m: 1.3
+        avg_speed_30m: 2.6
+        pace_drop_percent: 50.0
+      data_quality: 0.9
+expected_required_tools:
+  - get_route_context
+  - project_route_state
+  - get_weather_for_route_time
+  - get_user_device_context
+  - assess_risk
+expected_required_horizons:
+  - "NOW"
+  - "+30min"
+  - "+60min"
+  - "+120min"
+forbidden_behaviors:
+  - HALLUCINATE_WEATHER
+  - HALLUCINATE_ROUTE
+  - GUESS_MISSING_DATA
+  - MODIFY_RISK_LEVEL
+  - OVERRIDE_HARD_RULE
+  - SKIP_FRESHNESS_CHECK
+  - SKIP_REQUIRED_HORIZON
+  - SKIP_PROJECTED_LOCATION
+  - CLAIM_ACCIDENT_PROBABILITY
+expected_safety_core:
+  # The level is not pinned on purpose: R-B sets a hard severity floor that the
+  # Phase 1 engine maps onto a level, and R-F escalates the soft half by one
+  # level. What IS pinned is that the sunset-margin hard rule fires and that the
+  # two independent soft drivers (pace degradation, battery x remaining route)
+  # are the ones reported.
+  risk_level: null
+  hard_rules_triggered:
+    - R-B
+  drivers_expected:
+    - R-D
+    - R-E

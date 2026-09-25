@@ -1,0 +1,190 @@
+# TrailGuard Rule Pack v1 -- frozen for the MVP (spec section 7).
+#
+# Exactly six rules. Each rule carries the frozen metadata block required by
+# spec section 7 (id / name / condition / thresholds / units / severity /
+# rationale / source / source_type / version) plus three extension keys the
+# deterministic core needs to evaluate it mechanically: trigger_type,
+# applies_to_horizons and calibration.
+#
+# CALIBRATION NOTICE -- read before quoting any number in this file.
+#   Every threshold below is a TrailGuard team demo-calibration value chosen for
+#   the DGX Spark hackathon demonstration. source_type is
+#   competition_demo_calibration for every rule, calibration is true, and the
+#   top-level calibration block records is_calibrated: false with review_status:
+#   pending. None of these numbers is an industry safety standard, a published
+#   guideline or a clinical threshold, and none must be presented as one.
+#
+# Vocabulary notes:
+#   * severity and min_severity use the shared schemas.risk.Severity vocabulary
+#     (LOW/MEDIUM/HIGH/CRITICAL). One vocabulary on purpose: a rule's severity is
+#     compared against RuleDriver.severity when the compound rule R-F escalates, so
+#     a lowercase spelling here would simply never match. The loader rejects any
+#     other spelling (and any min_severity that is not a Severity member) instead
+#     of silently disabling the escalation.
+#   * applies_to_horizons uses the exact string values of schemas.route.Horizon
+#     ("NOW", "+30min", "+60min", "+120min").
+
+pack_id: trailguard_rules_v1
+version: "1.0.0"
+status: calibration
+description: >-
+  Six-rule deterministic safety core for TrailGuard: one hard route-deviation rule,
+  one hard sunset-margin rule, three soft rules (future weather, pace degradation,
+  battery x remaining route) and one soft compound-escalation rule. The pack is data,
+  not code: the Phase 1 engine loads it and evaluates each rule declaratively
+  (feature path + operator + value), so thresholds can be re-tuned without touching
+  engine or prompt text. Rule combination (R-F) is configured here and never
+  hardcoded in the SKILL.md prompt.
+calibration:
+  is_calibrated: false
+  calibrated_for: "competition demo (DGX Spark hackathon)"
+  review_status: pending
+
+rules:
+  - id: R-A
+    name: Route Deviation
+    condition: >-
+      off_route_distance_m exceeds threshold, optionally persisting across N
+      consecutive observations.
+    thresholds:
+      off_route_distance_m: 50
+      off_route_distance_m_severe: 150
+      persistence_observations: 3
+    units:
+      off_route_distance_m: meters
+      persistence_observations: count
+    severity: HIGH
+    rationale: >-
+      A hiker more than 50 m from the planned polyline is off-route, and beyond
+      150 m the deviation is severe; requiring the deviation to persist across
+      three observations suppresses single GPS-fix noise. Every threshold is a
+      conservative demo placeholder pending review, not an industry safety standard.
+    source: "TrailGuard team demo calibration (not an industry standard)"
+    source_type: competition_demo_calibration
+    version: "1.0.0"
+    trigger_type: hard
+    applies_to_horizons: ["NOW", "+30min", "+60min", "+120min"]
+    calibration: true
+
+  - id: R-B
+    name: Sunset Margin
+    condition: >-
+      time_margin_min = minutes_to_sunset - estimated_minutes_to_finish < threshold.
+      A negative margin means the current estimate finishes after sunset.
+    thresholds:
+      time_margin_min_warn: 30
+      time_margin_min_critical: 0
+    units:
+      time_margin_min: minutes
+    severity: CRITICAL
+    rationale: >-
+      Time margin is the demo's headline explainable safety margin, so the warn
+      band (30 min of daylight slack) and the critical band (a negative margin,
+      i.e. finishing after dark) are intentionally conservative demo placeholders
+      pending review, not published daylight-buffer guidance.
+    source: "TrailGuard team demo calibration (not an industry standard)"
+    source_type: competition_demo_calibration
+    version: "1.0.0"
+    trigger_type: hard
+    applies_to_horizons: ["NOW", "+30min", "+60min", "+120min"]
+    calibration: true
+
+  - id: R-C
+    name: Future Weather
+    condition: >-
+      weather hazard features at projected_position x projected_arrival_time exceed
+      thresholds (NOT current-location weather).
+    thresholds:
+      wind_gust_kmh: 45
+      wind_gust_kmh_severe: 65
+      precipitation_probability: 0.7
+      temperature_c_low: -5
+    units:
+      wind_gust_kmh: km/h
+      precipitation_probability: probability_0_1
+      temperature_c_low: celsius
+    severity: HIGH
+    rationale: >-
+      Conditions must be evaluated where the hiker is projected to be, not where
+      they are now. The gust, precipitation and cold thresholds are conservative
+      demo placeholders pending review, deliberately not an industry safety standard.
+    source: "TrailGuard team demo calibration (not an industry standard)"
+    source_type: competition_demo_calibration
+    version: "1.0.0"
+    trigger_type: soft
+    applies_to_horizons: ["NOW", "+30min", "+60min", "+120min"]
+    calibration: true
+
+  - id: R-D
+    name: Pace Degradation
+    condition: >-
+      avg_speed_10m significantly below avg_speed_30m (trend-based, no medical
+      thresholds).
+    thresholds:
+      pace_drop_percent_warn: 15
+      pace_drop_percent_high: 25
+    units:
+      pace_drop_percent: percent
+    severity: MEDIUM
+    rationale: >-
+      Pace trend is a purely kinematic signal comparing a recent window against a
+      longer one; no physiological or medical inference is made. The 15% and 25%
+      bands are conservative demo placeholders pending review, not an industry
+      safety standard.
+    source: "TrailGuard team demo calibration (not an industry standard)"
+    source_type: competition_demo_calibration
+    version: "1.0.0"
+    trigger_type: soft
+    applies_to_horizons: ["NOW", "+30min", "+60min", "+120min"]
+    calibration: true
+
+  - id: R-E
+    name: Battery x Remaining Route
+    condition: >-
+      projected battery at route finish below threshold given remaining
+      time/distance AND network availability (not a bare battery threshold).
+    thresholds:
+      projected_battery_percent_warn: 20
+      projected_battery_percent_critical: 10
+    units:
+      projected_battery_percent: percent
+    severity: HIGH
+    rationale: >-
+      A bare "battery < X" test is rejected on purpose: the rule projects battery
+      consumption to the route finish and weighs whether the hiker still has
+      network coverage to call for help. The 20% and 10% projections are
+      conservative demo placeholders pending review, not an industry safety standard.
+    source: "TrailGuard team demo calibration (not an industry standard)"
+    source_type: competition_demo_calibration
+    version: "1.0.0"
+    trigger_type: soft
+    applies_to_horizons: ["NOW", "+30min", "+60min", "+120min"]
+    calibration: true
+
+  - id: R-F
+    name: Compound Risk
+    condition: >-
+      two or more independent soft rules at severity >= MEDIUM triggered at the
+      same horizon escalate risk by one level.
+    thresholds:
+      min_independent_soft_rules: 2
+      min_severity: MEDIUM
+      escalation_levels: 1
+    units:
+      min_independent_soft_rules: count
+      escalation_levels: count
+    severity: MEDIUM
+    rationale: >-
+      Independently moderate signals are the classic path to a bad outcome, so two
+      or more of them at the same horizon escalate the verdict by exactly one
+      level. This combination is configured here as data, never hardcoded in the
+      LLM prompt, so the escalation policy is auditable and re-tunable without
+      touching SKILL.md. The 2-rule minimum, the MEDIUM severity floor and the
+      single-level escalation are conservative demo placeholders pending review,
+      not an industry safety standard.
+    source: "TrailGuard team demo calibration (not an industry standard)"
+    source_type: competition_demo_calibration
+    version: "1.0.0"
+    trigger_type: soft
+    applies_to_horizons: ["NOW", "+30min", "+60min", "+120min"]
+    calibration: true

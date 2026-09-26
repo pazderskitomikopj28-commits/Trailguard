@@ -1,22 +1,19 @@
 """Deterministic safety core boundary tests (spec sections 7, 8, 5.5).
 
-Responsibility: pin the three things the rest of the system leans on, without
-implementing any risk logic:
+Responsibility: pin the things the rest of the system leans on -- the rule pack's
+severity vocabulary, the engine factory's respect for its own class, the
+demo-calibration score bands, and the soft-score arithmetic that Phase 1
+implemented. The pack loads from YAML into ``RuleDefinition`` objects whose
+severity is expressed in the *same* :class:`Severity` vocabulary a
+:class:`RuleDriver` consumes -- so a triggered rule can be explained as a driver
+with no translation step, and a mis-cased severity fails at load time.
 
-1. the rule pack loads from YAML into ``RuleDefinition`` objects whose severity is
-   expressed in the *same* :class:`Severity` vocabulary a :class:`RuleDriver`
-   consumes -- so a triggered rule can be explained as a driver with no
-   translation step, and a mis-cased severity fails at load time;
-2. the engine factory respects the class it is called on: ``RiskEngine`` yields the
-   honest Phase 0 placeholder, a concrete subclass yields itself;
-3. the demo-calibration score bands are marked as calibration, cover the whole
-   [0, 100] range contiguously, and never speak of probability.
-
-Explicit non-responsibility: these tests do not evaluate a rule, do not compute a
-score and do not choose a level -- feature extraction, hard-rule floors, soft
-scoring, level mapping and R-F escalation are Phase 1 work (spec 25), and every
-one of those entry points is asserted to raise ``NotImplementedError`` naming its
-phase rather than to return a value.
+The still-unimplemented entry points are asserted to raise
+``NotImplementedError`` naming their phase rather than to return a value: that is
+now only ``RiskEngine.assess_risk`` on the abstract placeholder, which Phase 1
+superseded with :class:`DeterministicRiskEngine` (tested in
+``tests/test_deterministic_core.py``). Every other entry point of the core has a
+real body, and this file pins what that body does.
 """
 
 from __future__ import annotations
@@ -262,17 +259,101 @@ def test_the_bands_never_speak_of_probability() -> None:
     )
 
 
-def test_soft_score_aggregation_defers_to_phase_one() -> None:
-    """Weights and saturation are Phase 1 arithmetic, not a Phase 0 guess."""
+def test_soft_score_aggregation_sums_severity_weights() -> None:
+    """Weights and saturation are the calibration's, and the total saturates.
+
+    Phase 0 asserted this raised ``NotImplementedError``; Phase 1 implements the
+    arithmetic, so the test now pins what the arithmetic *is*: one weight per
+    triggered severity, nothing for a rule that did not trigger, and a ceiling.
+    """
     from trailguard.schemas.risk import RuleDriver
 
-    drivers = [RuleDriver(rule_id="R-D", type="soft", severity=Severity.MEDIUM)]
+    dry = RuleDriver(rule_id="R-D", type="soft", severity=Severity.MEDIUM)
+    cold = RuleDriver(rule_id="R-C", type="soft", severity=Severity.HIGH)
 
-    with pytest.raises(NotImplementedError) as excinfo:
-        aggregate_soft_score(drivers)
+    assert aggregate_soft_score([]) == 0
+    assert aggregate_soft_score([dry]) == 25, "one MEDIUM soft rule contributes its own weight"
+    assert aggregate_soft_score([dry, cold]) == 65, "HIGH 40 + MEDIUM 25"
+    assert aggregate_soft_score([dry] * 5 + [cold]) == 100, "5x25 + 40 saturates at 100, never wraps"
+    assert aggregate_soft_score([cold] * 9) == 100, "the ceiling is a clip, not a wrap"
 
-    assert "Phase 1" in str(excinfo.value)
-    assert "demo-calibration" in str(excinfo.value)
+
+def test_the_compound_rule_contributes_no_points_of_its_own() -> None:
+    """R-F escalates the level; it must not also inflate the score it escalates.
+
+    Counting a combination rule in the very total it escalates would make its own
+    escalation invisible, so the engine exempts it -- and the exemption arrives as
+    data (the pack's ``kind: compound``), not as a rule id spelled out here.
+    """
+    from trailguard.risk_core.calibration import CALIBRATION_PATH, load_calibration
+    from trailguard.schemas.risk import RuleDriver
+
+    pack = load_rule_pack(RULES_PATH)
+    calibration = load_calibration(CALIBRATION_PATH)
+    calibration.validate_against(pack)
+    compound_ids = {
+        rule_id for rule_id, evaluation in calibration.evaluations.items() if evaluation.kind == "compound"
+    }
+
+    assert compound_ids == {"R-F"}, "the pack declares exactly one combination rule"
+
+    drivers = [
+        RuleDriver(rule_id="R-C", type="soft", severity=Severity.HIGH),
+        RuleDriver(rule_id="R-D", type="soft", severity=Severity.MEDIUM),
+        RuleDriver(rule_id="R-F", type="soft", severity=pack.get("R-F").severity),
+    ]
+
+    assert aggregate_soft_score(drivers, exempt_rule_ids=compound_ids) == 65
+    assert aggregate_soft_score(drivers) == 90, "without the exemption the combination counts twice"
+
+
+def test_an_unknown_severity_fails_rather_than_contributing_zero() -> None:
+    """A misspelled severity must not make a rule vanish from the score.
+
+    The :class:`Severity` vocabulary is closed at the *contract* layer, so a
+    misspelled severity cannot even reach the scoring function -- which is the
+    stricter of the two guarantees. The scoring function keeps its own loud check
+    for callers that hand it something driver-shaped but not a driver.
+    """
+    from trailguard.schemas.risk import RuleDriver
+
+    with pytest.raises(ValueError) as excinfo:
+        RuleDriver(rule_id="R-C", type="soft", severity="EXTREME")
+
+    message = str(excinfo.value)
+    assert "EXTREME" in message
+    assert "CRITICAL" in message, "the message must name the closed vocabulary that was violated"
+
+    class _NotADriver:
+        """Something with a rule id and a severity the calibration never declared."""
+
+        rule_id = "R-C"
+        severity = "EXTREME"
+
+    with pytest.raises(ValueError) as scoring_error:
+        aggregate_soft_score([_NotADriver()])
+
+    assert "R-C" in str(scoring_error.value) and "EXTREME" in str(scoring_error.value)
+    assert "CRITICAL" in str(scoring_error.value), "the scorer names the weights it would have needed"
+
+
+def test_every_score_lands_in_exactly_one_band() -> None:
+    """Band lookup is total and closed on [0, 100], the way the bands promise."""
+    for score in (0, 24, 25, 49, 50, 74, 75, 100):
+        assert scoring.score_band(score) == scoring.level_for_score(score).value
+
+    assert scoring.level_for_score(0) is RiskLevel.GREEN
+    assert scoring.level_for_score(100) is RiskLevel.RED
+    assert scoring.level_for_score(65) is RiskLevel.ORANGE
+
+
+def test_a_score_that_is_not_a_number_is_refused() -> None:
+    """"Which level is NaN?" has no honest answer, so it raises."""
+    with pytest.raises(ValueError):
+        scoring.level_for_score(float("nan"))
+
+    with pytest.raises(ValueError):
+        scoring.level_for_score("high"), "a non-numeric score has no band"
 
 
 def test_the_pack_is_data_not_code(rule_pack: RulePack) -> None:

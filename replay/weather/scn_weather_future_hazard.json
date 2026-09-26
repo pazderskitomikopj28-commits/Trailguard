@@ -1,0 +1,36 @@
+{
+  "synthetic": true,
+  "source": "synthetic weather fixture, not live data",
+  "note": "SYNTHETIC COMPETITION DEMO FIXTURE -- not Open-Meteo historical data and not a real forecast. Hand-authored TrailGuard replay asset (spec 17, 24) used to demonstrate the Phase 2 route-aware weather chain: the same projected position asked about at four different horizons meets a discrete hourly grid whose hazard worsens later in the day, so the ONLY thing that changes between NOW and +120 min is the weather at the projected position and projected arrival time. Values are invented. Stored in Open-Meteo's response shape (parallel 'hourly' arrays, 'hourly_units', 'utc_offset_seconds') so the same normalisation layer that parses a live response parses this file; precipitation_probability is in percent ('%' in hourly_units, exactly as Open-Meteo reports it) and is divided by 100 to obtain the 0..1 probability the TrailGuard schemas use.",
+  "scenario_date": "2026-05-18",
+  "generated_at": "2026-05-18T10:00:00Z",
+  "utc_offset_seconds": 0,
+  "timezone": "UTC",
+  "timezone_abbreviation": "UTC",
+  "latitude": 46.081,
+  "longitude": 7.772,
+  "elevation": 1379,
+  "location_tolerance_km": 7.0,
+  "hourly_units": {
+    "time": "iso8601",
+    "temperature_2m": "°C",
+    "precipitation_probability": "%",
+    "wind_speed_10m": "km/h",
+    "wind_gusts_10m": "km/h",
+    "weather_code": "wmo code"
+  },
+  "hourly": {
+    "time": [
+      "2026-05-18T10:00",
+      "2026-05-18T11:00",
+      "2026-05-18T12:00",
+      "2026-05-18T13:00",
+      "2026-05-18T14:00"
+    ],
+    "temperature_2m": [9.0, 10.5, 11.5, 11.0, 9.5],
+    "precipitation_probability": [0, 0, 20, 35, 25],
+    "wind_speed_10m": [6.2, 7.1, 14.8, 18.4, 16.2],
+    "wind_gusts_10m": [14.0, 16.0, 58.0, 72.0, 64.0],
+    "weather_code": [0, 1, 2, 3, 61]
+  }
+}

@@ -1,14 +1,15 @@
 """Tool contract tests for the frozen five-tool registry (spec sections 4, 5).
 
 Responsibility: prove that exactly the five atomic tools of spec 4.1 exist, that
-their names and JSON-schema shapes are what the harness advertises, that every
-implementation body honestly refuses to run in Phase 0, and that no one-shot
-"answer all 30/60/120 horizons at once" tool (the banned ``forecast_risk``
-pattern of spec 4.2) exists anywhere in the package.
+their names and JSON-schema shapes are what the harness advertises, that the four
+implemented bodies really run and the one deferred one honestly refuses while
+naming the phase that owes it, and that no one-shot "answer all 30/60/120 horizons
+at once" tool (the banned ``forecast_risk`` pattern of spec 4.2) exists anywhere in
+the package.
 
-Explicit non-responsibility: these tests do not execute tool logic, do not build
-a risk verdict and do not check the horizon loop -- that loop is the Skill's job
-(spec 10.2) and no tool may own it.
+Explicit non-responsibility: these tests do not check the *correctness* of what a
+tool computes -- that is the deterministic-core suite's job -- and do not check
+the horizon loop, which is the Skill's job (spec 10.2) and no tool's.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ import pytest
 from conftest import (
     EXPECTED_TOOL_NAMES,
     REPO_ROOT,
+    make_device_state,
     make_geo_point,
     make_risk_result,
     make_route_context,
@@ -32,7 +34,7 @@ from conftest import (
     make_weather,
 )
 
-from trailguard.schemas import ToolName
+from trailguard.schemas import ToolName, WeatherPolicy
 from trailguard.tools import (
     TOOL_FUNCTIONS,
     TOOL_SPECS,
@@ -156,8 +158,16 @@ def test_tool_functions_map_onto_the_five_implementations() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Phase 0 stub contract
+# What each body does in Phase 1
 # --------------------------------------------------------------------------- #
+
+#: Analysis instant shared by the argument sets below. Explicit, because a test
+#: that let a tool read the wall clock would be comparing against a moving target
+#: (spec 19).
+ANALYSIS_TIME = datetime(2026, 5, 18, 10, 30, tzinfo=timezone.utc)
+
+#: A device feed the replay assets actually ship (see tests/test_device_feeds.py).
+REPLAY_DEVICE_ID = "scn_device_S01_clear_day"
 
 
 def _route_state_kwargs() -> dict:
@@ -170,64 +180,119 @@ def _route_state_kwargs() -> dict:
             "avg_speed_30m": 3.7,
         },
         "horizon_min": 60,
+        "analysis_time": ANALYSIS_TIME,
     }
 
 
-@pytest.mark.parametrize("tool_name", list(ToolName), ids=lambda tool: tool.value)
-def test_every_tool_raises_not_implemented(tool_name: ToolName) -> None:
-    """Each body refuses to run and names the phase that owes the work."""
-    arguments = {
+def _replay_policy() -> WeatherPolicy:
+    """The replay policy the frozen scenarios declare, for an offline tool call."""
+    return WeatherPolicy.model_validate(
+        {
+            "mode": "replay",
+            "max_freshness_min": 180,
+            "snapshot_ref": "replay/weather/scn_weather_snapshot.json",
+            "preferred_source": "open-meteo",
+        }
+    )
+
+
+def _arguments_for(tool_name: ToolName) -> dict:
+    """The signature-correct argument set for ``tool_name``.
+
+    Each entry is a *complete* contract payload: pydantic refuses a partial
+    :class:`~trailguard.schemas.context.DeviceState`, and a test that handed over
+    half of one would be testing the wrong failure.
+    """
+    return {
         ToolName.GET_ROUTE_CONTEXT: {
             "route_id": "scn_route_sample",
             "current_position": make_geo_point(),
-            "timestamp": datetime(2026, 5, 18, 10, 30, tzinfo=timezone.utc),
+            "timestamp": ANALYSIS_TIME,
         },
         ToolName.PROJECT_ROUTE_STATE: _route_state_kwargs(),
         ToolName.GET_WEATHER_FOR_ROUTE_TIME: {
+            # The three declared contract fields, exactly as the agent path sends
+            # them (spec 15) -- plus the replay policy as a keyword-only extra,
+            # because a tool called with nothing but its contract fields goes live
+            # (spec 17), and this suite must make no network calls (spec 13).
             "lat": 46.08102,
             "lon": 7.77210,
             "target_time": datetime(2026, 5, 18, 11, 30, tzinfo=timezone.utc),
+            "policy": _replay_policy(),
         },
-        ToolName.GET_USER_DEVICE_CONTEXT: {"device_id": "device_001"},
+        ToolName.GET_USER_DEVICE_CONTEXT: {"device_id": REPLAY_DEVICE_ID},
         ToolName.ASSESS_RISK: {
             "route_state": make_route_context(),
             "weather_state": make_weather(),
-            "user_device_state": {
-                "battery_percent": 78.0,
-                "network_available": True,
-                "fatigue_index": 0.12,
-            },
+            "user_device_state": make_device_state(),
             "time_state": make_time_state(),
         },
     }[tool_name]
 
-    with pytest.raises(NotImplementedError) as excinfo:
-        TOOL_FUNCTIONS[tool_name](**arguments)
 
-    message = str(excinfo.value)
-    assert "Phase" in message, f"{tool_name.value} must name its owning phase"
-    assert message != "", f"{tool_name.value} must not raise a bare NotImplementedError"
+#: The tools whose bodies run, derived from the registry rather than hard-coded, so
+#: a tool that moves phase moves its own test with it. Phase 2 implemented the last
+#: one, so this is every registered tool.
+IMPLEMENTED_TOOLS: tuple[ToolName, ...] = tuple(
+    name for name, spec in TOOL_SPECS.items() if spec.implemented_in_phase in ("Phase 1", "Phase 2")
+)
+#: A registry entry no phase claims. Phase 2 emptied this: all five tools have real
+#: bodies, so anything appearing here would mean a sixth tool was added (which spec
+#: 4.1 forbids) or a phase was never attributed.
+STUB_TOOLS: tuple[ToolName, ...] = tuple(name for name in TOOL_SPECS if name not in IMPLEMENTED_TOOLS)
 
 
-def test_assess_risk_stub_does_not_return_a_verdict() -> None:
-    """The stub raises instead of inventing a plausible-looking verdict."""
+def test_the_registry_holds_no_stub_and_no_sixth_tool() -> None:
+    """All five tools are implemented, and there are exactly five.
+
+    The Phase 0 and Phase 1 versions of this test asserted the opposite for the
+    tools still outside their phase. Phase 2 is the phase that implemented
+    ``get_weather_for_route_time``, so the boundary is stated positively now: no
+    entry is unattributed, the atomic-tool count is unchanged (spec 4.1), and the
+    phase attribution is still read from the registry rather than from this test's
+    own list.
+    """
+    assert STUB_TOOLS == ()
+    assert IMPLEMENTED_TOOLS == tuple(TOOL_SPECS)
+    assert len(IMPLEMENTED_TOOLS) == 5
+    assert get_tool_spec(ToolName.GET_WEATHER_FOR_ROUTE_TIME).implemented_in_phase == "Phase 2"
+
+
+@pytest.mark.parametrize("tool_name", IMPLEMENTED_TOOLS, ids=lambda tool: tool.value)
+def test_every_implemented_tool_runs_and_returns_its_output_model(tool_name: ToolName) -> None:
+    """Each implemented body answers with its declared output type.
+
+    The weather tool is the one that needs care: called with only its three declared
+    contract fields it goes live, because replay is used only when the caller chooses
+    it (spec 17). So the call below supplies an explicit replay policy -- the same one
+    every frozen scenario declares -- which is also what keeps this test offline
+    (spec 13).
+    """
+    spec = get_tool_spec(tool_name)
+    result = TOOL_FUNCTIONS[tool_name](**_arguments_for(tool_name))
+
+    assert isinstance(result, spec.output_model), (
+        f"{tool_name.value} returned {type(result).__name__}, not {spec.output_model.__name__}"
+    )
+    # The result must survive its own contract's round trip: a tool that produced
+    # an instance its schema cannot serialise would be unusable in an evidence
+    # trace.
+    assert spec.output_model.model_validate(result.model_dump(mode="json")) == result
+
+
+def test_assess_risk_returns_a_real_verdict_rather_than_raising() -> None:
+    """The core produces an actual verdict; no stub path remains.
+
+    The companion Phase 0 test asserted the opposite, and its point survives here
+    in the form it can still make: the verdict is a :class:`RiskResult` with a
+    level, and it is not one of the answers a test could have planted.
+    """
     verdict = make_risk_result(risk_level="RED")
 
-    with pytest.raises(NotImplementedError):
-        TOOL_FUNCTIONS[ToolName.ASSESS_RISK](
-            route_state=make_route_context(),
-            weather_state=make_weather(),
-            user_device_state={
-                "battery_percent": 78.0,
-                "network_available": True,
-                "fatigue_index": 0.12,
-            },
-            time_state=make_time_state(),
-        )
+    result = TOOL_FUNCTIONS[ToolName.ASSESS_RISK](**_arguments_for(ToolName.ASSESS_RISK))
 
-    # The helper above proves the factory stays usable for other tests; the stub
-    # itself never produced this or any other verdict.
-    assert verdict.risk_level.value == "RED"
+    assert result.risk_level.value in {"GREEN", "YELLOW", "ORANGE", "RED"}
+    assert result != verdict, "the core must compute its own verdict, never echo a planted one"
 
 
 # --------------------------------------------------------------------------- #

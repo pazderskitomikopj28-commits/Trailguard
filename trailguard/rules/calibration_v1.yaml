@@ -1,0 +1,281 @@
+# TrailGuard deterministic-core calibration v1 (Phase 1).
+#
+# CALIBRATION NOTICE -- read before quoting any number in this file.
+#   Every value here is a TrailGuard team demo-calibration parameter chosen for
+#   the DGX Spark hackathon demonstration. is_calibrated is false and
+#   review_status is pending. None of these numbers is an industry safety
+#   standard, a published guideline, a clinical threshold or a validated
+#   uncertainty framework, and none may be presented as one (spec sections 7, 12).
+#
+# What this file is for: the numbers the deterministic core needs that are NOT
+# rule thresholds. Rule thresholds live in the frozen pack
+# ``trailguard/rules/rules_v1.yaml`` and are never duplicated here; this file
+# holds the *evaluation* metadata (which feature each threshold is compared
+# against, in which direction, at which band) and the arithmetic's tuning
+# constants (score bands, severity weights, movement-model weights, battery
+# drain, projection reliability, confidence weights).
+#
+# Why the threshold operands are mapped here instead of parsed out of their own
+# names: an operand such as ``time_margin_min_warn: 30`` says what to compare and
+# against what number, but not *in which direction* -- 30 minutes of daylight
+# slack is dangerous when the margin falls below it, while 50 metres is dangerous
+# when the deviation rises above it. Encoding that in a naming convention would
+# make the pack's spelling load-bearing and would leave the reader guessing; one
+# explicit table that the loader validates against the pack (every numeric
+# threshold in rules_v1.yaml must be covered by exactly one clause) is auditable
+# at a glance and fails loudly when the two drift apart.
+
+pack_id: trailguard_calibration_v1
+version: "1.0.0"
+status: calibration
+description: >-
+  Demo-calibration parameters of the TrailGuard deterministic core: clause
+  evaluation metadata for the frozen rule pack, soft-score bands and weights, the
+  hard-rule severity floor, the movement-model weights of spec 6.3, the battery
+  drain assumption of rule R-E, the projection reliability curve and the
+  confidence weights. Data, not code: re-tuning any of it edits this file only.
+calibration:
+  is_calibrated: false
+  calibrated_for: "competition demo (DGX Spark hackathon)"
+  review_status: pending
+
+# --------------------------------------------------------------------------- #
+# Soft score -> risk level bands (spec 7, 8, 12)
+# --------------------------------------------------------------------------- #
+# Migrated here from the SOFT_SCORE_BANDS constant that shipped in Phase 0, so a
+# band change is a data edit rather than a code change. The bands must stay
+# contiguous and cover [0, 100] with no gap and no overlap; the loader enforces
+# both, and tests/test_risk_core.py keeps asserting the same properties.
+soft_score_bands:
+  GREEN: [0, 24]
+  YELLOW: [25, 49]
+  ORANGE: [50, 74]
+  RED: [75, 100]
+
+# How much each triggered soft rule contributes, by the severity assigned to it
+# (a rule's own severity, or the higher band it crossed). Saturating at
+# ``saturation_score`` keeps a single very loud rule from reaching RED on its own
+# only if the weights say so -- here they say it cannot (the largest single
+# contribution is CRITICAL at 50 of 100).
+soft_score:
+  severity_weights:
+    LOW: 10
+    MEDIUM: 25
+    HIGH: 40
+    CRITICAL: 50
+  saturation_score: 100
+
+# The floor a triggered HARD rule sets. A hard rule can only raise the level
+# produced by the soft score, never lower it (spec 10.5), and a LOW-severity hard
+# rule therefore floors at GREEN, which is a no-op by construction.
+hard_rule_severity_floor:
+  LOW: GREEN
+  MEDIUM: YELLOW
+  HIGH: ORANGE
+  CRITICAL: RED
+
+# --------------------------------------------------------------------------- #
+# Movement model (spec 6.3)
+# --------------------------------------------------------------------------- #
+# Frozen default form: base_speed = 0.5*avg_speed_10m + 0.3*avg_speed_30m +
+# 0.2*current_speed, then effective_speed = base_speed * (1 - fatigue_penalty).
+# The weights and the cap on the fatigue penalty are demo calibration, not an
+# industry pace model: no gradient-aware pace, no Naismith adjustment, no
+# personalized or ML ETA is used in the MVP.
+movement:
+  base_speed_weights:
+    avg_speed_10m: 0.5
+    avg_speed_30m: 0.3
+    current_speed_kmh: 0.2
+  fatigue_penalty_cap: 0.6
+
+# Reliability of a projection by horizon. A projection two hours out is a weaker
+# statement than one thirty minutes out, purely because the conditional
+# assumption ("the hiker keeps moving at the currently observable trend") is
+# asked to hold for longer; the numbers are demo calibration.
+projection:
+  horizon_reliability:
+    NOW: 1.0
+    "+30min": 0.97
+    "+60min": 0.94
+    "+120min": 0.90
+
+# --------------------------------------------------------------------------- #
+# Route geometry quality (get_route_context, spec 5.1)
+# --------------------------------------------------------------------------- #
+# A polyline's own quality, measured from what a GPX can honestly claim: how
+# finely it is sampled and how much of it carries elevation. There is no
+# published route-data-quality scale, so this is a disclosure aid for the
+# confidence channel and must not be read as survey accuracy.
+route_data_quality:
+  min_trackpoints: 12
+  trackpoint_weight: 0.5
+  elevation_weight: 0.5
+
+# --------------------------------------------------------------------------- #
+# Battery projection (rule R-E, spec 7)
+# --------------------------------------------------------------------------- #
+# Rule R-E is not "battery < X": it projects the battery forward to the route
+# finish at a calibrated drain rate and compares that projection with its bands.
+# The frozen DeviceState contract cannot carry a per-device drain rate (the
+# observed 4 %/h of scenario S01 and 3.5 %/h of S04 are scenario data), so the
+# MVP uses one calibrated rate. A caller who knows the device's real rate builds
+# the engine with a calibration whose ``battery.drain_percent_per_hour`` differs.
+battery:
+  drain_percent_per_hour: 4.0
+  projected_floor_percent: 0.0
+  projected_ceiling_percent: 100.0
+
+# --------------------------------------------------------------------------- #
+# Pace degradation (rule R-D, spec 7)
+# --------------------------------------------------------------------------- #
+# A purely kinematic trend feature: how far the recent 10-minute window has
+# fallen behind the 30-minute one. No physiological or medical threshold exists
+# anywhere in this block, and none may be added (spec 7 R-D).
+pace:
+  short_window_min: 10
+  long_window_min: 30
+
+# --------------------------------------------------------------------------- #
+# Confidence (spec 10.3, 10.4, 8)
+# --------------------------------------------------------------------------- #
+# Confidence is an engineering statement about the *inputs* -- data quality,
+# completeness, weather age and projection reliability. It is not a probability
+# of harm and must never be reported as one.
+confidence:
+  # Age of a weather snapshot beyond which it is fully untrusted, and the value a
+  # quality term takes when it cannot be determined. Unknown is penalised, never
+  # treated as perfect (spec 10.3).
+  default_weather_freshness_budget_min: 180
+  unknown_value: 0.5
+  # Weights of the five terms. They sum to 1.0; the loader enforces it.
+  weights:
+    route_data_quality: 0.20
+    device_data_quality: 0.20
+    weather: 0.25
+    projection: 0.15
+    reported_overall_quality: 0.20
+  # Per-field penalties for the missing/stale lists a caller discloses (spec
+  # 10.3, 10.4). Disclosed gaps must cost confidence, or the protocol would
+  # reward hiding them.
+  missing_field_penalty: 0.05
+  stale_field_penalty: 0.03
+
+# --------------------------------------------------------------------------- #
+# Rule evaluation metadata
+# --------------------------------------------------------------------------- #
+# One entry per rule of trailguard/rules/rules_v1.yaml. ``kind`` selects how the
+# engine evaluates the rule; ``clauses`` then names, for every numeric threshold
+# of that rule, the feature it is compared against, the direction of the
+# comparison and the band it represents. Neither values nor severities are
+# restated here -- a threshold's value is read from the pack's ``thresholds`` and
+# a triggered rule contributes the pack's own ``severity`` -- so the pack stays
+# the single source of truth for both and cannot drift from a copy.
+rule_clauses:
+  R-A:
+    kind: threshold_clauses
+    clauses:
+      - threshold_key: off_route_distance_m
+        feature: off_route_distance_m
+        operator: gt
+        band: warn
+      - threshold_key: off_route_distance_m_severe
+        feature: off_route_distance_m
+        operator: gt
+        band: severe
+    # ``persistence_observations`` is not a threshold the core can evaluate: it
+    # describes how many *consecutive observations* must agree, and a single
+    # assess_risk call holds exactly one. Declaring it here keeps the pack's own
+    # wording authoritative while making the engine's inability explicit.
+    non_evaluable_thresholds:
+      persistence_observations: >-
+        a stateless single-horizon assessment holds one observation, so the
+        deviation is reported as measured and persistence is not asserted
+
+  R-B:
+    kind: threshold_clauses
+    clauses:
+      - threshold_key: time_margin_min_warn
+        feature: time_margin_min
+        operator: lt
+        band: warn
+      - threshold_key: time_margin_min_critical
+        feature: time_margin_min
+        operator: lt
+        band: critical
+
+  R-C:
+    kind: threshold_clauses
+    clauses:
+      - threshold_key: wind_gust_kmh
+        feature: wind_gust_kmh
+        operator: gt
+        band: warn
+      - threshold_key: wind_gust_kmh_severe
+        feature: wind_gust_kmh
+        operator: gt
+        band: severe
+      - threshold_key: precipitation_probability
+        feature: precipitation_probability
+        operator: gt
+        band: warn
+      - threshold_key: temperature_c_low
+        feature: temperature_c
+        operator: lt
+        band: low
+    # Features reported alongside the driver so the explanation can state the
+    # projected position/time the hazards were read at (spec 7 R-C).
+    context_features:
+      - projected_position
+      - projected_arrival_time
+      - weather_freshness_min
+
+  R-D:
+    kind: threshold_clauses
+    clauses:
+      - threshold_key: pace_drop_percent_warn
+        feature: pace_drop_percent
+        operator: gt
+        band: warn
+      - threshold_key: pace_drop_percent_high
+        feature: pace_drop_percent
+        operator: gt
+        band: high
+
+  R-E:
+    kind: threshold_clauses
+    clauses:
+      - threshold_key: projected_battery_percent_warn
+        feature: projected_battery_percent
+        operator: lt
+        band: warn
+      - threshold_key: projected_battery_percent_critical
+        feature: projected_battery_percent
+        operator: lt
+        band: critical
+    # What the projection behind the tested feature combines (spec 7 R-E): the
+    # battery, the distance still to walk, the time still needed to walk it and
+    # whether the hiker can still reach a network. These are reported with the
+    # driver; they do not gate the trigger, because a bare battery threshold is
+    # what this rule exists to replace.
+    context_features:
+      - battery_percent
+      - remaining_distance_km
+      - estimated_minutes_to_finish
+      - network_available
+
+  R-F:
+    kind: compound
+    # The counting rule reads its own operands from the pack
+    # (min_independent_soft_rules, min_severity, escalation_levels) and applies
+    # them to the soft rules that triggered at the same horizon. It never counts
+    # itself, the combination lives in the pack rather than in SKILL.md, and it
+    # contributes no soft-score points of its own -- it consumes the score the
+    # other rules produced and moves the level by escalation_levels, so counting
+    # a combination rule twice cannot make its own escalation invisible.
+    # Declared so the loader can prove the pack leaves no numeric operand here
+    # that the engine would silently ignore.
+    consumed_thresholds:
+      - min_independent_soft_rules
+      - min_severity
+      - escalation_levels

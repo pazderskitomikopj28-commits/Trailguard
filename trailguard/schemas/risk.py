@@ -48,12 +48,35 @@ RiskLevel.LEVELS: "ClassVar[list[RiskLevel]]" = [
 
 
 class Severity(str, Enum):
-    """Rule severity vocabulary used by rule packs and drivers."""
+    """Rule severity vocabulary used by rule packs and drivers.
+
+    ``rank`` gives the comparable ordering LOW=0 .. CRITICAL=3. The ordering is
+    deliberately NOT the string ordering: ``"HIGH" < "MEDIUM"`` alphabetically, so
+    a comparison such as "severity at or above MEDIUM" performed on the raw member
+    would silently drop HIGH and CRITICAL rules -- which is exactly the filter the
+    compound rule R-F applies. Ordering therefore goes through :attr:`rank`, the
+    way :class:`RiskLevel` does it.
+    """
 
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
     CRITICAL = "CRITICAL"
+
+    @property
+    def rank(self) -> int:
+        """Comparable severity rank: LOW=0, MEDIUM=1, HIGH=2, CRITICAL=3."""
+        return Severity.LEVELS.index(self)
+
+
+#: Canonical severity order, low to high. Assigned right after the class body
+#: because members do not exist while the body is still executing.
+Severity.LEVELS: "ClassVar[list[Severity]]" = [
+    Severity.LOW,
+    Severity.MEDIUM,
+    Severity.HIGH,
+    Severity.CRITICAL,
+]
 
 
 class RuleDriver(BaseModel):

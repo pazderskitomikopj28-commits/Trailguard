@@ -1,12 +1,30 @@
-"""``get_user_device_context`` tool -- device and hiker-state feed (spec 5.4).
+"""``get_user_device_context`` tool -- device and hiker-state feed (spec 5.4, Phase 1).
 
-Phase 0 scope: contract only. The function body is a stub that raises
-``NotImplementedError`` naming the phase that owns the implementation.
+The tool is the seam between "a device id" and the device half of a context
+snapshot. It reads a *replay device feed* -- a frozen JSON asset under
+``replay/devices/`` generated from a frozen scenario's own timeline
+(:mod:`trailguard.replay.devices`) -- and reports it. It contacts no real device,
+opens no platform API and reads no clock, so the same id gives the same state in
+every run (spec 19).
+
+What it deliberately does not do: decide whether the battery is enough. That
+combination belongs to rule R-E inside the deterministic core, and a tool that
+judged sufficiency would duplicate a threshold in two places that could then
+disagree.
 """
 
+from __future__ import annotations
+
+from ..replay.devices import DeviceFeed, DeviceFeedError, load_device_feed
 from ..schemas.context import DeviceState
 
+from ._arguments import binds_input_contract
+from .contracts import GetUserDeviceContextInput
 
+__all__ = ["get_user_device_context"]
+
+
+@binds_input_contract(GetUserDeviceContextInput)
 def get_user_device_context(device_id: str) -> DeviceState:
     """Read the phone/watch state used by the deterministic core (spec 5.4).
 
@@ -30,20 +48,26 @@ def get_user_device_context(device_id: str) -> DeviceState:
         belongs to rule R-E.
 
     Simulated inputs: the first version may read simulated device inputs
-    (spec 5.4), and the frozen contract therefore carries the provenance
-    disclosure needed to tell a simulated feed from a real one.
+    (spec 5.4). Every feed this reads says so in its own ``provenance_note``, so
+    a simulated reading can never be mistaken for a real one downstream.
 
-    Inputs:
-      * ``device_id`` -- identifier of the hiker's device / feed.
+    Args:
+        device_id: Identifier of the hiker's device / feed, i.e. the file stem of
+            an asset under ``replay/devices/`` (e.g.
+            ``scn_device_S01_clear_day``).
 
-    Outputs:
-      A :class:`~trailguard.schemas.context.DeviceState` with
-      ``battery_percent``, ``network_available``, ``fatigue_index``, the
-      observed ``movement`` window, the feed's ``data_quality`` and
-      ``last_network_time`` -- the complete device feed of spec 5.4.
+    Returns:
+        A :class:`~trailguard.schemas.context.DeviceState` with
+        ``battery_percent``, ``network_available``, ``fatigue_index``, the
+        observed ``movement`` window, the feed's ``data_quality`` and
+        ``last_network_time`` -- the complete device feed of spec 5.4, at the
+        feed's t=0 row.
 
-    Phase 0 stub: the deterministic device-feed implementation belongs to
-    Phase 1 (deterministic core, "battery / network") and therefore raises
-    ``NotImplementedError``.
+    Raises:
+        DeviceFeedError: no replay feed matches ``device_id`` (the message lists
+            the feeds that do), or the asset is unreadable. An unknown device is
+            missing data (spec 10.3), and the honest answer is a named failure --
+            never a plausible default battery level.
     """
-    raise NotImplementedError("Phase 1: deterministic device feed (battery, network, simulated fatigue feature)")
+    feed: DeviceFeed = load_device_feed(device_id)
+    return feed.current

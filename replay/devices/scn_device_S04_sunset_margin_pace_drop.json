@@ -1,0 +1,69 @@
+{
+  "device_id": "scn_device_S04_sunset_margin_pace_drop",
+  "scenario_ref": "scenarios/compound/scn_sunset_margin_pace_drop.yaml",
+  "provenance_note": "Simulated device feed, generated from the frozen replay scenario's own device_timeline (spec 17, 5.4). This is NOT a real device reading and NOT a real incident record: it exists so the deterministic core can be exercised offline and reproducibly. The t=0 row is byte-identical to the scenario's initial_context.device.value, which a test cross-checks.",
+  "feed_note": "Battery declines at the scenario's own rate and the fatigue index climbs at its own rate; fatigue_index is a rule-constructed simulated feature, never a medical model output (spec 5.4).",
+  "current": {
+    "battery_percent": 38.0,
+    "network_available": true,
+    "fatigue_index": 0.5,
+    "last_network_time": "2026-05-18T11:40:00Z",
+    "movement": {
+      "current_speed_kmh": 1.6,
+      "avg_speed_10m": 1.8,
+      "avg_speed_30m": 3.0,
+      "pace_drop_percent": 40.0
+    },
+    "data_quality": 0.9
+  },
+  "timeline": [
+    {
+      "t_offset_min": 30.0,
+      "value": {
+        "battery_percent": 36.3,
+        "network_available": true,
+        "fatigue_index": 0.55,
+        "last_network_time": "2026-05-18T12:20:00Z",
+        "movement": {
+          "current_speed_kmh": 1.4,
+          "avg_speed_10m": 1.6,
+          "avg_speed_30m": 2.9,
+          "pace_drop_percent": 44.8
+        },
+        "data_quality": 0.9
+      }
+    },
+    {
+      "t_offset_min": 60.0,
+      "value": {
+        "battery_percent": 34.6,
+        "network_available": true,
+        "fatigue_index": 0.6,
+        "last_network_time": "2026-05-18T12:50:00Z",
+        "movement": {
+          "current_speed_kmh": 1.3,
+          "avg_speed_10m": 1.4,
+          "avg_speed_30m": 2.8,
+          "pace_drop_percent": 50.0
+        },
+        "data_quality": 0.9
+      }
+    },
+    {
+      "t_offset_min": 120.0,
+      "value": {
+        "battery_percent": 31.1,
+        "network_available": true,
+        "fatigue_index": 0.7,
+        "last_network_time": "2026-05-18T14:50:00Z",
+        "movement": {
+          "current_speed_kmh": 1.2,
+          "avg_speed_10m": 1.3,
+          "avg_speed_30m": 2.6,
+          "pace_drop_percent": 50.0
+        },
+        "data_quality": 0.9
+      }
+    }
+  ]
+}

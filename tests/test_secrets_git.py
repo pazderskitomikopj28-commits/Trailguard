@@ -105,18 +105,26 @@ def _tracked_files() -> list[str]:
 def _committable_files() -> list[str]:
     """Every path git would offer for a commit: tracked and untracked alike.
 
-    ``-uall`` expands untracked directories to individual files, so the scan sees
-    a repo that has not been committed yet (which is exactly the current state).
+    Two sources are unioned, because each alone is blind to part of the tree:
+
+    * ``git ls-files`` lists what the index holds -- every file of a *committed*
+      repository, which ``git status`` reports nothing about when the tree is
+      clean. Phase 0 froze its first commit (``phase0-freeze``), so without this
+      source the scan below would see zero files and pass vacuously;
+    * ``git status --porcelain -uall`` adds staged, modified, renamed and
+      untracked paths, expanding untracked directories to individual files, so
+      the scan also sees work that has never been committed.
+
+    The result is the whole "what could reach a commit" set in either state.
     """
+    paths = set(_tracked_files())
     result = _git("status", "--porcelain", "--untracked-files=all", "-z")
-    entries = [chunk for chunk in result.stdout.split("\0") if chunk]
-    paths: list[str] = []
-    for entry in entries:
+    for entry in (chunk for chunk in result.stdout.split("\0") if chunk):
         # Porcelain v1 with -z: "XY<space><path>" (two status chars, one space).
         path = entry[3:] if len(entry) > 3 else entry
         if path:
-            paths.append(path)
-    return paths
+            paths.add(path)
+    return sorted(paths)
 
 
 def _scannable_files() -> list[Path]:

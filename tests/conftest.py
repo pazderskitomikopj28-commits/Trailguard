@@ -534,3 +534,40 @@ def rule_driver() -> RuleDriver:
 def scenario_files() -> list[Path]:
     """Every scenario YAML file in the dataset."""
     return list(SCENARIO_FILES)
+
+
+# --------------------------------------------------------------------------- #
+# Offline guard (spec 13)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture(autouse=True)
+def no_external_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test runs with the socket layer closed; a real connection fails loudly.
+
+    Spec 13 requires that ``python -m pytest`` make **zero** external HTTP calls, and
+    the honest way to guarantee that is to make the attempt impossible rather than to
+    promise nobody wrote one. This fixture is autouse, so it covers every test in the
+    suite -- including any added later -- and it raises a message naming the rule
+    rather than a bare ``OSError``, so a regression points at the requirement instead
+    of at ``errno``.
+
+    What it does *not* do: it does not change what the live provider builds or sends.
+    :class:`~trailguard.weather.open_meteo.OpenMeteoWeatherProvider` is exercised
+    through an injected transport (spec 13's mock transport / dependency injection),
+    so the timeout, 5xx and malformed-response paths are all still tested for real
+    -- only the wire is closed. The one thing that can reach the wire is
+    ``scripts/test_live_weather.py``, which pytest never runs (spec 14).
+    """
+    import socket
+
+    def _refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError(
+            "TrailGuard's test suite must make no external network calls (spec 13). "
+            "Inject a transport into the provider instead, or run scripts/test_live_weather.py."
+        )
+
+    monkeypatch.setattr(socket.socket, "connect", _refuse, raising=True)
+    monkeypatch.setattr(socket.socket, "connect_ex", _refuse, raising=True)
+    monkeypatch.setattr(socket, "create_connection", _refuse, raising=True)
+    monkeypatch.setattr(socket, "getaddrinfo", _refuse, raising=True)

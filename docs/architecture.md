@@ -1,12 +1,16 @@
 # TrailGuard Architecture
 
-**Status: Phase 0 (specification and foundation).** Every module described here is a
-contract, a stub or a loader; no route math, weather call or risk scoring is executed
-yet. This document explains how the layers fit together, which file owns what, and
-what is deliberately left to later phases.
+**Status: Phase 1 (deterministic core).** The factual chain is real and runs end to
+end: geodesic GPX route geometry, route projection, the frozen movement model, replay
+weather, and the rule-driven safety core that produces level, score, drivers, margins
+and confidence. Still absent by design: live weather (Phase 2), the Skill's horizon
+loop in the harness (Phase 2), providers (Phase 3), the DGX Spark benchmark (Phase 5)
+and the demo (Phase 6). This document explains how the layers fit together, which file
+owns what, and what is deliberately left to later phases.
 
 Spec references below point to the single source of truth:
-`TrailGuard_比赛版开发冻结规格_v2.1.md`.
+`TrailGuard_比赛版开发冻结规格_v2.1.md`. How the Phase 1 numbers are produced is
+documented in [`deterministic_core.md`](deterministic_core.md).
 
 ---
 
@@ -82,20 +86,31 @@ dgx-spark-hackathon/
 │   │   ├── scenario.py               ToolName, ForbiddenBehavior, Scenario, TimelinePoint
 │   │   └── trace.py                  ToolCallRecord, HorizonCheckRecord, EvidenceTrace
 │   │                                  (+ secret redaction)
+│   ├── routes/                       real GPX geometry (spec 5.1, 24)
+│   │   ├── geometry.py               geodesic distances + planar nearest-point snapping
+│   │   └── registry.py               resolve_route_geometry(), RE-ROOTED asset lookup
 │   ├── tools/                        the five atomic tools (spec 4, 5)
 │   │   ├── __init__.py               TOOL_SPECS / TOOL_FUNCTIONS / tool_schema_dicts()
-│   │   ├── route_context.py          get_route_context          (Phase 1)
-│   │   ├── route_projection.py       project_route_state         (Phase 1)
-│   │   ├── weather_route_time.py     get_weather_for_route_time (Phase 2)
-│   │   ├── user_device.py            get_user_device_context     (Phase 1)
-│   │   └── risk_assessment.py        assess_risk                 (Phase 1)
+│   │   ├── route_context.py          get_route_context                    (Phase 1, real)
+│   │   ├── route_projection.py       project_route_state                  (Phase 1, real)
+│   │   ├── weather_route_time.py     get_weather_for_route_time          (Phase 2)
+│   │   ├── user_device.py            get_user_device_context             (Phase 1, real)
+│   │   └── risk_assessment.py        assess_risk                          (Phase 1, real)
 │   ├── risk_core/                    deterministic safety core (spec 7, 8)
-│   │   ├── hard_rules.py             RuleDefinition, RulePack, load_rule_pack() -- REAL loader
-│   │   ├── engine.py                 RiskEngine interface + fixed pipeline order
-│   │   ├── scoring.py                aggregate_soft_score() + demo-calibration bands
-│   │   └── confidence.py             compute_confidence()
+│   │   ├── hard_rules.py             RuleDefinition, RulePack, load_rule_pack()
+│   │   ├── engine.py                 DeterministicRiskEngine + fixed pipeline order
+│   │   ├── features.py               FeatureVector: contract field -> named feature
+│   │   ├── movement.py               frozen speed model, ETA, pace drop
+│   │   ├── scoring.py                aggregate_soft_score() + demo bands
+│   │   ├── confidence.py             compute_confidence()
+│   │   └── calibration.py            calibration_v1.yaml loader + cross-validation
+│   ├── replay/                       Phase 1 readers for the frozen assets
+│   │   ├── devices.py                device feeds -> DeviceState at a t-offset
+│   │   └── weather.py                open-meteo-shaped snapshot -> hazard rows
 │   ├── rules/
-│   │   └── rules_v1.yaml             six rules R-A..R-F, all calibration-marked
+│   │   ├── rules_v1.yaml             six rules R-A..R-F, all calibration-marked
+│   │   └── calibration_v1.yaml       evaluation metadata: clause table, bands, weights
+│   ├── smoke.py                      `python -m trailguard.smoke`: the chain, printed
 │   ├── agent/                        TrailGuard's own runtime (spec 15)
 │   │   ├── harness.py                run_agent(): system prompt -> tool loop -> trace
 │   │   ├── skill_loader.py           load_skill_md(): raw text, never parsed
@@ -115,7 +130,8 @@ dgx-spark-hackathon/
 │   ├── baseline/ edge_cases/ compound/
 ├── replay/                           frozen GPX + weather snapshot (spec 17, 24)
 │   ├── routes/                       scn_route_sample.gpx
-│   └── weather/                      scn_weather_snapshot.json
+│   ├── weather/                      scn_weather_snapshot.json (open-meteo-shaped)
+│   └── devices/                      one JSON feed per scenario
 │       (spec 24 also reserves replay/timelines/; it is NOT created, because the v1
 │        movement/device timelines live inline in each scenario YAML -- see
 │        replay/README.md section 1)
@@ -153,10 +169,13 @@ retry, repair or substitute calls, and it does not decide which tools a task req
 
 **Tools <-> Safety Core.** Four tools deliver facts (`route context`, `projection`,
 `weather`, `device state`); the fifth, `assess_risk`, delegates to the safety core in
-`trailguard/risk_core/`, whose rule pack is loaded from `rules/rules_v1.yaml` by
-`load_rule_pack()`. The engine pipeline order is fixed: feature extraction -> hard
+`trailguard/risk_core/`. The core holds no threshold: thresholds come from
+`rules/rules_v1.yaml` and the *evaluation metadata* -- which feature each threshold is
+compared against, in which direction, at which band -- from
+`rules/calibration_v1.yaml`, with `Calibration.validate_against(pack)` proving the two
+files cover each other. The engine pipeline order is fixed: feature extraction -> hard
 rules set a severity floor -> soft score -> level mapping -> R-F compound escalation ->
-confidence.
+confidence. Nothing in that order may lower a level.
 
 **Core <-> Schemas.** Everything crossing a boundary is a pydantic v2 contract with
 `extra="forbid"`, so a malformed payload fails at the boundary instead of leaking into
@@ -178,25 +197,33 @@ weather snapshot and the movement/device timelines inside a `Scenario`, so a run
 reproducible and a no-skill / with-skill pair is a controlled comparison. The demo
 (Phase 6) replays the same scenarios and shows the same trace the benchmark scored.
 
-## 6. Phase 0 vs later phases
+## 6. Phase 1 vs later phases
 
-Phase 0 ships contracts, the YAML rule pack (with its real loader), the harness loop,
-the skill text, the metric vocabulary and these docs. Nothing else.
+Phase 0 shipped contracts, the YAML rule pack (with its real loader), the harness loop,
+the skill text, the metric vocabulary and the docs. Phase 1 added the arithmetic that
+turns those contracts into numbers. The split below is what is already running versus
+what a later phase owns.
 
-| Area | Phase 0 (done) | Later |
+| Area | Phase 1 (done) | Later |
 | --- | --- | --- |
-| Schemas | all contract modules, frozen field sets | additive changes only, spec amendment first |
-| Tools | signatures, input/output models, `ToolSpec` boundaries, stubs raising `NotImplementedError` | Phase 1 bodies for route/projection/device/assess; Phase 2 for weather |
-| Safety core | `RuleDefinition` / `RulePack` validation, real YAML loader, engine interface, band vocabulary | Phase 1 rule evaluation, projection, ETA, sunset margin; Phase 2 confidence |
-| Rule pack | `rules_v1.yaml` authored, six rules, every threshold calibration-marked | re-tuning is data-only; no new rules in the MVP |
-| Agent harness | `run_agent()` loop, fairness contract, trace collection | Phase 3 providers wired; Phase 5 semantic trace fields |
+| Schemas | unchanged from Phase 0; still frozen, `extra="forbid"` | additive changes only, spec amendment first |
+| Route geometry | `routes/geometry.py`: geodesic metres, planar nearest-point, elevation from the GPX itself | a persistence model for "no longer on this route" |
+| Tools | real bodies for route context, projection, device state and `assess_risk` | Phase 2 for `get_weather_for_route_time` |
+| Safety core | declarative rule evaluation, ETA, sunset margin, soft score, hard-rule floor, R-F escalation, confidence | re-tuning is data-only; no new rules in the MVP |
+| Rule pack | `rules_v1.yaml` unchanged in Phase 1; `calibration_v1.yaml` added for evaluation metadata | re-tuning is data-only |
+| Replay | device feeds and the open-meteo-shaped weather snapshot are read by real loaders | live weather; scenario dataset growth (Phase 3+) |
+| Agent harness | unchanged from Phase 0 | Phase 3 providers wired; Phase 5 semantic trace fields |
 | Skill | `SKILL.md` v1 protocol text | revisions stay protocol-level, never implementation-level |
 | Evals | metric names, `MetricResult`, `EvalRunResult`, `ComparisonReport`, fairness preconditions | Phase 5 aggregation, DGX Spark evidence |
-| Replay / scenarios | `Scenario` schema | scenario dataset (13), replay assets (17) |
 | Demo | -- | Phase 6 Streamlit |
 
-Forbidden in Phase 0 by spec 26: UI polish, wearables, mobile, databases, dozens of
-rules, trained models, multi-agent designs. Phase 0 and Phase 1 must be stable first.
+Phase 1 deliberately did **not** touch the harness, the skill text or the rule pack's
+thresholds -- `rules_v1.yaml` is byte-identical to its Phase 0 version, and every
+threshold change lives in the new `calibration_v1.yaml`.
+
+Forbidden in Phase 1 by spec 26: UI polish, wearables, mobile, databases, dozens of
+rules, trained models, multi-agent designs, and calling a language model to compute
+risk.
 
 ## 7. Boundaries worth restating
 
@@ -212,5 +239,11 @@ rules, trained models, multi-agent designs. Phase 0 and Phase 1 must be stable f
   (spec 6.2, 12).
 * Every rule threshold is `competition_demo_calibration` with `calibration: true` and
   `review_status: pending` -- never an industry safety standard (spec 7).
-* Nothing in this repository executes business logic during Phase 0, and the legacy
-  `app/` scaffolding is neither imported nor modified.
+* No language model participates in the safety core. The chain from GPX to verdict runs
+  with `STEPFUN_API_KEY` unset, and a test deletes the key variables to prove it (spec
+  20). `python -m trailguard.smoke` prints the whole chain for inspection.
+* No CUDA, no GPU and no Numba anywhere in the repository (spec 24).
+* The safety core reads no wall clock: every instant is passed in, and
+  `RiskResult.computed_at` *is* the analysis instant, so a replay reproduces byte for
+  byte (spec 19).
+* The legacy `app/` scaffolding is neither imported nor modified.

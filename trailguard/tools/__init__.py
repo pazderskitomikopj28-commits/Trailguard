@@ -1,6 +1,6 @@
 """TrailGuard tool contract layer (spec sections 4, 5).
 
-Five atomic tools exist in Phase 0 -- see
+Five atomic tools exist -- see
 :class:`~trailguard.schemas.scenario.ToolName` for why. Each tool is a single
 capability with its own input and output contract; the registry below is the
 single source of truth for what the agent harness may expose to a model.
@@ -15,121 +15,42 @@ Atomicity rules enforced here (spec 4.1, 4.2):
 * every tool lists its forbidden uses, so a reviewer can check a proposed call
   against the spec without re-reading it.
 
-Phase 0 scope: contracts, descriptions and stubs only. Every implementation
-body raises ``NotImplementedError`` naming the phase that owns it -- Phase 1 for
-the deterministic core (route context, projection, device feed, risk
-assessment) and Phase 2 for route-aware weather.
+Phase ownership: all five tools now have real bodies -- four implemented in Phase 1
+(route context, route projection, device context, risk assessment) and
+``get_weather_for_route_time`` in Phase 2 (route-aware weather providers, replay and
+live). Five real bodies do not mean five decisions: the tools stay atomic, the
+30/60/120 horizon loop still belongs to the Skill, and the deterministic core still
+runs with no LLM, no key and no network (``mode = "replay"`` needs none, and
+``mode = "live"`` needs only the public Open-Meteo endpoint).
+
+The input contracts live in :mod:`trailguard.tools.contracts` so the
+implementations can bind their arguments to them without importing this package;
+they are re-exported below for callers that only want the contract.
 """
 
 from datetime import datetime
 from typing import Any, Callable
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
-from ..schemas.context import DeviceState, GeoPoint, RouteContext, TimeState
+from ..schemas.context import DeviceState, RouteContext, TimeState
 from ..schemas.risk import RiskResult
 from ..schemas.route import Horizon, MovementTrend, RouteProjection
 from ..schemas.scenario import ToolName
 from ..schemas.weather import WeatherForRouteTime
 
+from .contracts import (
+    AssessRiskInput,
+    GetRouteContextInput,
+    GetUserDeviceContextInput,
+    GetWeatherForRouteTimeInput,
+    ProjectRouteStateInput,
+)
 from .risk_assessment import assess_risk
 from .route_context import get_route_context
 from .route_projection import project_route_state
 from .user_device import get_user_device_context
 from .weather_route_time import get_weather_for_route_time
-
-
-# --------------------------------------------------------------------------- #
-# Tool input contracts
-# --------------------------------------------------------------------------- #
-# One pydantic model per tool so the harness can expose a JSON schema and
-# validate arguments before a stub or a real implementation is invoked. These
-# mirror the tool signatures one-to-one; the tool bodies own the semantics.
-
-
-class GetRouteContextInput(BaseModel):
-    """Input contract for :func:`get_route_context` (spec 5.1)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    route_id: str = Field(..., description="Identifier of the planned route (GPX asset reference).")
-    current_position: GeoPoint = Field(..., description="GPS fix the route position facts are computed against.")
-    timestamp: datetime = Field(..., description="ISO8601 instant the fix refers to.")
-
-
-class ProjectRouteStateInput(BaseModel):
-    """Input contract for :func:`project_route_state` (spec 5.2)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    route_context: RouteContext = Field(..., description="Current route position facts.")
-    movement: MovementTrend = Field(..., description="Movement trend the frozen projection model weights.")
-    horizon_min: int = Field(..., description="Horizon offset in minutes (0/30/60/120).")
-
-    @field_validator("horizon_min")
-    @classmethod
-    def _frozen_horizon_set(cls, value: int) -> int:
-        """Reject any offset outside the frozen horizon set (spec 6.1).
-
-        The horizon set (NOW / +30min / +60min / +120min) is frozen for the MVP,
-        and every horizon-keyed consumer -- the skill's loop, the scenario's
-        ``expected_required_horizons``, the trace's ``horizons_checked`` -- is
-        keyed on exactly those four values. An unconstrained ``int`` would let a
-        model ask for ``horizon_min=15`` and get a projection nothing downstream
-        can record or compare, so the contract refuses it here instead of
-        silently answering a question the benchmark cannot score.
-        """
-        allowed = sorted(member.minutes for member in Horizon)
-        if value not in allowed:
-            raise ValueError(f"horizon_min must be one of the frozen horizons {allowed} minutes (spec 6.1), got {value}")
-        return value
-
-
-class GetWeatherForRouteTimeInput(BaseModel):
-    """Input contract for :func:`get_weather_for_route_time` (spec 5.3)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    lat: float = Field(..., ge=-90, le=90, description="Query latitude in decimal degrees.")
-    lon: float = Field(..., ge=-180, le=180, description="Query longitude in decimal degrees.")
-    target_time: datetime = Field(..., description="ISO8601 instant the forecast must describe.")
-
-
-class GetUserDeviceContextInput(BaseModel):
-    """Input contract for :func:`get_user_device_context` (spec 5.4)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    device_id: str = Field(..., description="Identifier of the hiker device / feed.")
-
-
-class AssessRiskInput(BaseModel):
-    """Input contract for :func:`assess_risk` (spec 5.5).
-
-    The three required states are the caller's *inputs*: spec 5.5 forbids the
-    core from projecting or fetching, so the Skill projects and then hands the
-    horizon's route state over. ``projected_state`` is the optional mirror of
-    that hand-off for the horizon's *projected* route state, without which the
-    core could not report the projection-derived safety margins of spec 8
-    (``time_margin_min`` from ``projected_arrival_time``,
-    ``projection_confidence`` from ``RouteProjection.projection_confidence``) for
-    any horizon after NOW. It is optional precisely because the NOW horizon has
-    no projection to pass.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    route_state: RouteContext = Field(..., description="Route state for the horizon under assessment.")
-    weather_state: WeatherForRouteTime = Field(..., description="Weather for the same horizon, with provenance.")
-    user_device_state: DeviceState = Field(..., description="Device state for the hiker.")
-    time_state: TimeState = Field(..., description="Analysis clock and sunset instant for the time margin.")
-    projected_state: RouteProjection | None = Field(
-        default=None,
-        description=(
-            "Projected route state for this horizon, from project_route_state, when one exists (not for NOW). "
-            "Supplies the projected arrival time and projection confidence the safety margins of spec 8 report."
-        ),
-    )
 
 
 # --------------------------------------------------------------------------- #
@@ -251,7 +172,9 @@ TOOL_SPECS: dict[ToolName, ToolSpec] = {
     ),
 }
 
-#: Name -> implementation. Phase 0 bodies are stubs raising ``NotImplementedError``.
+#: Name -> implementation. Every body is real: Phase 1 implemented four of them and
+#: Phase 2 implemented ``get_weather_for_route_time``, so no entry here raises
+#: ``NotImplementedError``.
 TOOL_FUNCTIONS: dict[ToolName, Callable[..., Any]] = {
     ToolName.GET_ROUTE_CONTEXT: get_route_context,
     ToolName.PROJECT_ROUTE_STATE: project_route_state,

@@ -190,9 +190,9 @@ def _validate_severity_threshold(rule: RuleDefinition) -> None:
 
     ``thresholds`` is a free-form ``dict[str, Any]``, so nothing in pydantic
     catches ``min_severity: medium``. The comparison the Phase 1 engine performs
-    (``driver.severity >= threshold``) is defined over the enum, so only an
-    exact uppercase member is usable. Responsibility: reject anything else at
-    load time. Not responsible for: evaluating the comparison.
+    is by :attr:`~trailguard.schemas.risk.Severity.rank`, so only an exact
+    uppercase member is usable. Responsibility: reject anything else at load
+    time. Not responsible for: evaluating the comparison.
     """
     for key in _SEVERITY_THRESHOLD_KEYS:
         if key not in rule.thresholds:
@@ -206,7 +206,11 @@ def _validate_severity_threshold(rule: RuleDefinition) -> None:
             )
 
 
-def load_rule_pack(path: str | Path) -> RulePack:
+#: Location of the frozen pack that ships with the package.
+DEFAULT_PACK_PATH: Path = Path(__file__).resolve().parents[1] / "rules" / "rules_v1.yaml"
+
+
+def load_rule_pack(path: str | Path | None = None) -> RulePack:
     """Load and validate a rule pack YAML file into a :class:`RulePack`.
 
     This is the only real code in this module: parse with ``yaml.safe_load``
@@ -215,6 +219,9 @@ def load_rule_pack(path: str | Path) -> RulePack:
 
     Args:
         path: Path to the rule pack YAML (e.g. ``trailguard/rules/rules_v1.yaml``).
+            Defaults to the frozen pack that ships beside this module, so a
+            caller wanting *the* pack does not have to reconstruct its location
+            and cannot accidentally load a different one.
 
     Returns:
         The validated :class:`RulePack`.
@@ -227,7 +234,7 @@ def load_rule_pack(path: str | Path) -> RulePack:
             calibration marking is inconsistent with its ``source_type``, or a
             severity-valued threshold is not a ``Severity`` member.
     """
-    pack_path = Path(path)
+    pack_path = Path(path) if path is not None else DEFAULT_PACK_PATH
     if not pack_path.is_file():
         raise FileNotFoundError(f"rule pack file not found: {pack_path}")
 
@@ -283,6 +290,7 @@ def load_rule_pack(path: str | Path) -> RulePack:
 
 
 __all__ = [
+    "DEFAULT_PACK_PATH",
     "EXPECTED_RULE_IDS",
     "RuleDefinition",
     "RulePack",

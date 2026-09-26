@@ -39,6 +39,15 @@ class WeatherForRouteTime(BaseModel):
     target_time: datetime = Field(..., description="ISO8601 instant the forecast describes.")
     freshness_minutes: float = Field(..., ge=0, description="Age of the forecast in minutes at use time.")
     confidence: float = Field(..., ge=0, le=1, description="Provider confidence in [0, 1].")
+    #: Whether ``confidence`` is the provider's own number or the calibration's
+    #: unknown value charged in its absence (spec 9). ``False`` means the provider
+    #: declared the figure; ``True`` means it did not and the number is a charged
+    #: unknown, not a claim. Without this flag a 0.5 the provider asserted is
+    #: indistinguishable from a 0.5 nobody earned, and "Open-Meteo confidence 0.9"
+    #: could quietly become a constant.
+    confidence_is_assumed: bool = Field(
+        default=False, description="True when the provider declared no confidence and the value is charged."
+    )
 
     def freshness_status(self, max_freshness_min: int) -> DataFreshnessStatus:
         """Classify this snapshot against ``max_freshness_min``.

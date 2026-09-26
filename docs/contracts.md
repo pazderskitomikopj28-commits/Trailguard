@@ -8,11 +8,16 @@ is the human-readable mirror of the same content.
 Frozen rule (spec 4): **five atomic tools, one capability each.** No tool may answer
 the 30/60/120 question in one call, and the registry must not grow during the MVP.
 
+Four of the five now have real bodies (Phase 1). `get_weather_for_route_time` remains
+a Phase 2 stub, and nothing in the Phase 1 core calls it: the core reads the frozen
+replay snapshot in `replay/weather/` through `trailguard/replay/weather.py`.
+
 ---
 
 ## `get_route_context`
 
-* **Implemented in:** Phase 1 (`trailguard/tools/route_context.py`, spec 5.1)
+* **Implemented in:** Phase 1 (`trailguard/tools/route_context.py`, spec 5.1) -- real
+  geodesic geometry over `replay/routes/*.gpx`
 * **Responsibility:** return where the hiker currently is on a known route -- progress,
   nearest point on the planned polyline, remaining distance and ascent, off-route
   distance in metres and route data quality.
@@ -25,6 +30,10 @@ the 30/60/120 question in one call, and the registry must not grow during the MV
   * must not output risk levels or safety verdicts
   * must not query weather or judge freshness
   * must not project a future position; that is `project_route_state`
+* **Geometry note:** every reported metre is a WGS-84 geodesic distance
+  (`pyproj.Geod`); the local azimuthal-equidistant + Shapely projection is used only to
+  find *which* point of the polyline is nearest, and the answer is then re-measured
+  geodesically. No DEM, no raster: elevation comes from the GPX itself.
 
 ## `project_route_state`
 
@@ -46,6 +55,9 @@ the 30/60/120 question in one call, and the registry must not grow during the MV
     the Skill
   * must not apply medical or injury thresholds; the fatigue penalty is a configurable
     demo-calibration parameter (spec 6.3)
+* **Two honest refusals:** a `horizon_min` outside 0/30/60/120 raises rather than
+  silently accepting an unmodelled horizon, and a projection requested without an
+  explicit `analysis_time` raises rather than reading the wall clock.
 
 ## `get_weather_for_route_time`
 
@@ -66,7 +78,8 @@ the 30/60/120 question in one call, and the registry must not grow during the MV
 
 ## `get_user_device_context`
 
-* **Implemented in:** Phase 1 (`trailguard/tools/user_device.py`, spec 5.4)
+* **Implemented in:** Phase 1 (`trailguard/tools/user_device.py`, spec 5.4) -- reads
+  the frozen per-scenario feed in `replay/devices/`
 * **Responsibility:** return the hiker device state -- battery percent, network
   availability, last network contact and the movement/fatigue features the
   deterministic rules consume.
@@ -93,18 +106,24 @@ the 30/60/120 question in one call, and the registry must not grow during the MV
   * must not output risk levels or decide whether the remaining battery is sufficient
   * must not report `data_quality` as a confidence in the verdict -- it is the feed's
     own quality claim, not a risk score
+* **Feed semantics:** a feed is a frozen list of `(t_offset_min, DeviceState)` rows. It
+  is addressed by id, never by a path, and a request past its last row is refused
+  rather than extrapolated -- a device feed is a replay asset, not a model.
 
 ## `assess_risk`
 
 * **Implemented in:** Phase 1 (`trailguard/tools/risk_assessment.py`, spec 5.5),
-  delegating to `trailguard/risk_core/engine.py` + `rules/rules_v1.yaml`
+  delegating to `trailguard/risk_core/engine.py`, with thresholds from
+  `rules/rules_v1.yaml` and evaluation metadata from `rules/calibration_v1.yaml`
 * **Responsibility:** run the deterministic safety core for **one** horizon over the
   supplied states -- hard rules set a severity floor, soft rules aggregate into a
   score, compound soft signals escalate one level -- and return level, score, drivers,
   triggered hard rules, confidence, evidence references and explainable safety margins
   with physical units.
-* **Input:** `route_state: RouteContext`, `weather_state: WeatherForRouteTime`,
-  `user_device_state: DeviceState`, `time_state: TimeState`
+* **Input:** `route_state: RouteContext`, `weather_state: WeatherForRouteTime | None`,
+  `user_device_state: DeviceState`, `time_state: TimeState`, and optionally
+  `projected_state: RouteProjection | None`, `horizon_min`, `weather_freshness_min`,
+  `data_quality` and a pre-built `engine`
 * **Output:** `RiskResult` (`trailguard/schemas/risk.py`) -- `risk_level`,
   `risk_score`, `drivers`, `hard_rules_triggered`, `confidence`, `evidence_refs`,
   `safety_margins`, `horizon`, `computed_at`
@@ -114,6 +133,21 @@ the 30/60/120 question in one call, and the registry must not grow during the MV
   * must not run the 30/60/120 loop or aggregate horizons
   * must not override or downgrade a triggered hard rule
   * must not return an accident probability; the concept is a Projected Risk State
+* **Two honest states rather than two defaults:**
+  * `weather_state=None` legalises a *missing* weather reading. Every weather feature
+    becomes not-computable, rule R-C is disclosed as not evaluated at this horizon, and
+    confidence drops accordingly. It is never silently skipped and never substituted
+    with a default.
+  * `projected_state=None` legalises a caller that declined to project (the NOW
+    horizon). The projection-derived margins -- projected battery, projection
+    confidence, time margin -- are then reported as unknown rather than invented.
+* **Confidence is an engineering statement, not a probability** (spec 10.3, 10.4): it
+  describes the trustworthiness of the *inputs* -- route data quality, device data
+  quality, weather age and snapshot quality, projection reliability, and the caller's
+  disclosed missing/stale fields -- weighted by the demo-calibration table in
+  `calibration_v1.yaml`. A 0.9-confidence RED verdict does not mean "90 % dangerous";
+  it means the inputs behind that verdict are good ones. Confidence accompanies a
+  verdict; it never moves one.
 
 ---
 

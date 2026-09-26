@@ -8,8 +8,11 @@ properties the benchmark depends on:
 2. ``skill_enabled`` is the *only* difference between the two conditions, so both
    offer identical tool names and identical temperature / max_tokens and see
    byte-identical user content;
-3. a Phase 0 stub tool is recorded honestly as ``not_implemented`` and no
-   credential-shaped value survives into the serialized trace.
+3. a tool that is not in its phase yet is recorded honestly as
+   ``not_implemented`` -- and one that is in its phase really runs, because the
+   harness hands the implementation the raw argument dict and the body must bind
+   it to its contract (``trailguard.tools._arguments``);
+4. no credential-shaped value survives into the serialized trace.
 
 Explicit non-responsibility: these tests do not implement the horizon loop, the
 freshness protocol or any safety reasoning -- that is SKILL.md's job, and the
@@ -42,6 +45,8 @@ from trailguard.agent.skill_loader import load_skill_md
 from trailguard.providers.base import ModelResponse, ToolCallRequest
 from trailguard.schemas import ToolName
 from trailguard.schemas.trace import REDACTED
+from trailguard.weather.base import WeatherProviderUnavailable
+from trailguard.tools import TOOL_FUNCTIONS, TOOL_SPECS, get_tool_spec
 
 TASK = "Assess the hiker and the required future horizons."
 
@@ -131,11 +136,16 @@ def test_tool_result_is_fed_back_to_the_model() -> None:
     tool_message = second_turn[-1]
     assert tool_message.name == "get_route_context"
     assert tool_message.tool_call_id == "call-1"
-    assert "not_implemented" in tool_message.content
+    # A Phase 1 tool really ran: the message carries the computed route context,
+    # not a refusal. The harness passes the raw argument dict through, so this
+    # also proves the body coerced it into its contract.
+    assert "route_progress" in tool_message.content
+    assert "not_implemented" not in tool_message.content
+    assert '"route_id":"scn_route_sample"' in tool_message.content
 
 
-def test_phase_zero_stub_tool_is_recorded_as_not_implemented() -> None:
-    """A stub tool records ``not_implemented`` and the phase that owes the work."""
+def test_a_phase_one_tool_records_a_successful_call() -> None:
+    """``status == "ok"`` and a result summary for a tool that is in its phase."""
     provider = StubProvider([_route_context_call(), _final_answer()])
 
     result = _run(provider, skill_enabled=True)
@@ -143,14 +153,65 @@ def test_phase_zero_stub_tool_is_recorded_as_not_implemented() -> None:
     assert len(result.trace.tool_calls) == 1
     record = result.trace.tool_calls[0]
     assert record.tool is ToolName.GET_ROUTE_CONTEXT
-    assert record.status == "not_implemented"
+    assert record.status == "ok"
     assert record.seq == 1
-    assert "Phase 1" in (record.error or "")
+    assert record.error is None
+    assert record.called_at is not None
+    # The arguments the trace records are the ones the model sent -- the
+    # contract-shaped dict -- not the coerced models, so a trace still replays.
+    assert record.arguments["route_id"] == "scn_route_sample"
+
+
+def test_a_tool_that_is_not_implemented_records_the_phase_that_owes_it() -> None:
+    """``not_implemented`` is still recorded, with the phase that owes the body.
+
+    No shipped tool is a stub any more -- Phase 2 implemented
+    ``get_weather_for_route_time`` -- so this drives the path with an *injected*
+    registry entry instead of a shipped one. The harness's handling of a
+    ``NotImplementedError`` must not rot just because the real tools moved on, and
+    the model asking for an unimplemented capability must still be told the gap is
+    deliberate rather than handed a fabrication.
+    """
+
+    def _deferred(**_arguments: object) -> None:
+        raise NotImplementedError("Phase 3: the explanation protocol")
+
+    provider = StubProvider(
+        [
+            ModelResponse(
+                content=None,
+                tool_calls=[_tool_call("get_weather_for_route_time", _VALID_TOOL_ARGS["get_weather_for_route_time"])],
+            ),
+            _final_answer(),
+        ]
+    )
+
+    result = _run(
+        provider,
+        skill_enabled=True,
+        tools={**TOOL_FUNCTIONS, ToolName.GET_WEATHER_FOR_ROUTE_TIME: _deferred},
+    )
+
+    assert len(result.trace.tool_calls) == 1
+    record = result.trace.tool_calls[0]
+    assert record.tool is ToolName.GET_WEATHER_FOR_ROUTE_TIME
+    assert record.status == "not_implemented"
+    assert "Phase 3" in (record.error or "")
     assert record.called_at is not None
 
 
+#: Which phase each tool is registered for, derived from the registry rather than
+#: written out here, so a tool that moves phase moves these sets with it.
+PHASE_ONE_TOOLS = tuple(
+    name for name, spec in TOOL_SPECS.items() if spec.implemented_in_phase == "Phase 1"
+)
+IMPLEMENTED_TOOLS = tuple(
+    name for name, spec in TOOL_SPECS.items() if spec.implemented_in_phase in ("Phase 1", "Phase 2")
+)
+STUB_TOOLS = tuple(name for name in TOOL_SPECS if name not in IMPLEMENTED_TOOLS)
+
 #: Signature-correct arguments for each registered tool, used when a test wants
-#: to reach a tool *body* (which then refuses) rather than trip argument binding.
+#: to reach a tool *body* rather than trip argument binding.
 _VALID_TOOL_ARGS: dict[str, dict] = {
     "get_route_context": {
         "route_id": "scn_route_sample",
@@ -165,13 +226,16 @@ _VALID_TOOL_ARGS: dict[str, dict] = {
             "avg_speed_30m": 3.7,
         },
         "horizon_min": 60,
+        # The frozen three-field contract of spec 5.2 carries no instant, so the
+        # caller that owns the clock passes it explicitly (spec 19).
+        "analysis_time": "2026-05-18T10:30:00Z",
     },
     "get_weather_for_route_time": {
         "lat": 46.08102,
         "lon": 7.77210,
         "target_time": "2026-05-18T11:30:00Z",
     },
-    "get_user_device_context": {"device_id": "device_001"},
+    "get_user_device_context": {"device_id": "scn_device_S01_clear_day"},
     "assess_risk": {
         "route_state": make_route_context().model_dump(mode="json"),
         "weather_state": make_weather().model_dump(mode="json"),
@@ -184,14 +248,13 @@ _VALID_TOOL_ARGS: dict[str, dict] = {
 }
 
 
-@pytest.mark.parametrize("tool", list(ToolName), ids=lambda tool: tool.value)
-def test_every_registered_tool_records_not_implemented(tool: ToolName) -> None:
-    """Each of the five tools is a Phase 0 stub when the model asks for it.
+@pytest.mark.parametrize("tool", PHASE_ONE_TOOLS, ids=lambda tool: tool.value)
+def test_every_phase_one_tool_records_a_successful_call(tool: ToolName) -> None:
+    """Each of the four implemented tools answers ``ok`` when the model asks.
 
-    The call carries a signature-correct argument set: Python binds arguments
-    before executing a body, so a call with the wrong keyword names raises
-    ``TypeError`` and the harness would honestly record ``"error"`` instead of
-    the stub's ``NotImplementedError``.
+    The argument set is derived from the registry's own ``implemented_in_phase``,
+    so a tool that moves phase moves this test with it rather than silently
+    failing later with a misleading name.
     """
     provider = StubProvider(
         [
@@ -202,8 +265,25 @@ def test_every_registered_tool_records_not_implemented(tool: ToolName) -> None:
 
     result = _run(provider, skill_enabled=False)
 
-    statuses = {record.tool: record.status for record in result.trace.tool_calls}
-    assert statuses[tool] == "not_implemented"
+    statuses = {record.tool: record for record in result.trace.tool_calls}
+    record = statuses[tool]
+    assert record.status == "ok", f"{tool.value} recorded {record.status}: {record.error}"
+    assert record.result_summary, "a successful call must leave a summary the model can read"
+
+
+def test_no_registry_tool_is_a_stub() -> None:
+    """Every tool in the registry has a body, and the registry says which phase owns it.
+
+    Phase 0 and Phase 1 each carried the opposite guard for the tools still outside
+    their phase. Phase 2 implemented the last one, so what must be true now is the
+    positive statement: no entry of :data:`TOOL_SPECS` is outside its phase, and the
+    phase attribution itself is still readable from the registry rather than from a
+    test's assumption about it.
+    """
+    assert STUB_TOOLS == ()
+    assert IMPLEMENTED_TOOLS == tuple(TOOL_SPECS)
+    assert ToolName.GET_WEATHER_FOR_ROUTE_TIME in IMPLEMENTED_TOOLS
+    assert get_tool_spec(ToolName.GET_WEATHER_FOR_ROUTE_TIME).implemented_in_phase == "Phase 2"
 
 
 def test_max_steps_is_enforced() -> None:
@@ -344,7 +424,18 @@ def test_the_weather_source_is_recorded_from_the_tool_result() -> None:
 
 
 def test_a_failed_weather_call_records_no_source() -> None:
-    """A refused call leaves the provenance empty rather than guessing a provider."""
+    """A refused weather call leaves the provenance empty rather than guessing a provider.
+
+    The tool itself is implemented as of Phase 2, so the interesting case is now the
+    one where it *fails*: the weather provider is unreachable, the target date is
+    outside the forecast range, or the snapshot names something that is not shipped.
+    The harness must still record ``no source`` -- it must not fill in a provider id
+    the model never actually got weather from, and it must not crash the run.
+    """
+
+    def _unavailable(**_arguments: object) -> None:
+        raise WeatherProviderUnavailable("open-meteo could not be reached: simulated outage")
+
     provider = StubProvider(
         [
             ModelResponse(
@@ -361,10 +452,15 @@ def test_a_failed_weather_call_records_no_source() -> None:
         ]
     )
 
-    result = _run(provider, skill_enabled=False)
+    result = _run(
+        provider,
+        skill_enabled=False,
+        tools={**TOOL_FUNCTIONS, ToolName.GET_WEATHER_FOR_ROUTE_TIME: _unavailable},
+    )
 
     assert result.trace.weather_source is None
-    assert result.trace.tool_calls[0].status == "not_implemented"
+    assert result.trace.tool_calls[0].status == "error"
+    assert "WeatherProviderUnavailable" in (result.trace.tool_calls[0].error or "")
 
 
 def test_the_assistant_turn_carries_the_calls_it_made() -> None:

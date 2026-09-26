@@ -8,9 +8,12 @@ is the human-readable mirror of the same content.
 Frozen rule (spec 4): **five atomic tools, one capability each.** No tool may answer
 the 30/60/120 question in one call, and the registry must not grow during the MVP.
 
-Four of the five now have real bodies (Phase 1). `get_weather_for_route_time` remains
-a Phase 2 stub, and nothing in the Phase 1 core calls it: the core reads the frozen
-replay snapshot in `replay/weather/` through `trailguard/replay/weather.py`.
+All five now have real bodies: four implemented in Phase 1, `get_weather_for_route_time`
+in Phase 2. Five bodies are not five decisions -- the tools stay atomic, the horizon
+loop still belongs to the Skill, and the deterministic core still needs no LLM, no key
+and, in `mode = "replay"`, no network at all. See
+[`docs/route_aware_weather.md`](docs/route_aware_weather.md) for how the weather body
+acquires and normalises a reading.
 
 ---
 
@@ -61,20 +64,44 @@ replay snapshot in `replay/weather/` through `trailguard/replay/weather.py`.
 
 ## `get_weather_for_route_time`
 
-* **Implemented in:** Phase 2 (`trailguard/tools/weather_route_time.py`, spec 5.3)
+* **Implemented in:** Phase 2 (`trailguard/tools/weather_route_time.py`, spec 5.3) --
+  the last of the five bodies; the other four were implemented in Phase 1
 * **Responsibility:** return weather for a target position and target time -- typically
   the projected position and projected arrival time of a horizon -- with provider
   provenance, freshness in minutes and confidence.
 * **Input:** `lat: float`, `lon: float`, `target_time: datetime`
 * **Output:** `WeatherForRouteTime` (`trailguard/schemas/weather.py`) -- hazard
   features plus `source`, `forecast_generated_at`, `target_time`,
-  `freshness_minutes`, `confidence`, and `freshness_status(max_freshness_min)`
+  `freshness_minutes`, `confidence`, `confidence_is_assumed`, and
+  `freshness_status(max_freshness_min)`
+* **How the weather is obtained (spec 17):** the acquisition mode is a *choice*, and
+  it is the caller's. `provider=` injects a built provider; otherwise `policy=`
+  selects one, and **no policy means live** -- Open-Meteo, the real capability -- so a
+  frozen fixture can never be substituted for a real question by accident. A policy
+  with `mode = "replay"` reads the snapshot its `snapshot_ref` names and refuses
+  rather than defaulting to another file. A live failure never falls back to replay.
+* **Confidence (spec 9):** `confidence_is_assumed` is `True` when the provider
+  declared no figure and the value is the calibration's `confidence_unknown_value`
+  charged in its place. Open-Meteo declares none, so a live reading always carries a
+  *charged* confidence, never an invented 0.9.
+* **Disclosed extras:** the returned `WeatherReading` (`trailguard/weather/base.py`)
+  carries `row_time`, `reach_minutes` (how far the discrete grid had to reach),
+  `confidence_is_assumed` and `notes` -- the disclosures with no field of their own,
+  such as "the projected position is N m from the point this snapshot describes".
+  `reading_provenance(reading)` flattens one reading to the trace's keys, so the
+  smoke run, the trace and a test cannot disagree about what weather provenance is.
 * **Prohibited uses:**
   * must not output safety levels; hazard interpretation is rule R-C's job
   * must not fabricate, interpolate or best-guess weather when no snapshot exists;
     report the gap instead
   * must not decide whether stale weather is acceptable; that is the Skill's freshness
     protocol
+  * must not project a position, run the safety core, or answer more than one horizon
+    in a call -- one call answers one `(position, instant)` pair (spec 4.2)
+* **One helper, not a sixth tool:** `weather_for_projection(projection, ...)` reads
+  `projection.projected_position` and `projection.projected_arrival_time` and makes
+  exactly one provider call. It exists so "the position comes from the projection,
+  never re-guessed" is written once; it takes a single projection and cannot loop.
 
 ## `get_user_device_context`
 

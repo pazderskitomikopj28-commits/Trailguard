@@ -30,10 +30,13 @@ BASE_DEPENDENCIES: frozenset[str] = frozenset({"pydantic", "pyyaml"})
 #: The spec-23 technical stack that must live in extras, never in the base list.
 #: Keyed by the *import* name, which is what the interpreter and ``sys.modules``
 #: use, so the footprint check below matches what actually gets imported.
+#: ``httpx`` is Phase 2's: the live Open-Meteo provider. It is imported lazily inside
+#: the provider, so replay Mode and the whole test suite run without it (spec 13).
 LATER_PHASE_LIBRARIES: dict[str, str] = {
     "gpxpy": "route",
     "shapely": "route",
     "pyproj": "route",
+    "httpx": "weather",
     "openai": "providers",
     "dotenv": "providers",
     "streamlit": "demo",
@@ -128,10 +131,16 @@ def test_the_frozen_rule_pack_and_contracts_import_without_extras() -> None:
 
 
 def test_no_phase_zero_module_imports_a_later_phase_library() -> None:
-    """Importing the package must not pull a single spec-23 library into memory."""
+    """Importing the package must not pull a single spec-23 library into memory.
+
+    ``trailguard.weather`` is named explicitly (Phase 2): the live provider imports
+    ``httpx`` lazily, inside the call that needs it, so importing the package -- or the
+    weather package, or the tool that uses it -- must leave httpx unimported. Replay
+    Mode and the whole test suite therefore run on the base install alone (spec 13).
+    """
     code = (
         "import trailguard, trailguard.schemas, trailguard.risk_core, trailguard.tools, "
-        "trailguard.agent, trailguard.providers, evals;"
+        "trailguard.weather, trailguard.agent, trailguard.providers, evals;"
         "import sys;"
         "print(sorted(name for name in sys.modules if name.split('.')[0] in "
         f"{sorted(set(LATER_PHASE_LIBRARIES))}))"
@@ -217,7 +226,7 @@ def test_requirements_documents_itself_as_append_only() -> None:
     text = (REPO_ROOT / "requirements.txt").read_text(encoding="utf-8")
 
     assert "append-only" in text
-    for extra in ("route", "providers", "demo"):
+    for extra in ("route", "weather", "providers", "demo"):
         assert f".[{extra}]" in text, f"the appended comment must name the {extra!r} extra"
 
 

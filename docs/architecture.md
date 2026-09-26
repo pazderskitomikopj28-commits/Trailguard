@@ -73,7 +73,9 @@ location.
 dgx-spark-hackathon/
 ├── SKILL.md                          Skill v1: reasoning protocol, no code (spec 10)
 ├── pyproject.toml / requirements.txt / .env.example
-├── docs/                             architecture, contracts, evaluation protocol
+├── docs/                             architecture, contracts, route-aware weather,
+│                                    deterministic core, evaluation protocol,
+│                                    phase0/phase1/phase2 final reports
 │
 ├── trailguard/
 │   ├── schemas/                      frozen contracts; the ONE shared context
@@ -107,10 +109,17 @@ dgx-spark-hackathon/
 │   ├── replay/                       Phase 1 readers for the frozen assets
 │   │   ├── devices.py                device feeds -> DeviceState at a t-offset
 │   │   └── weather.py                open-meteo-shaped snapshot -> hazard rows
+│   ├── weather/                      Phase 2 weather acquisition (spec 5.3, 17)
+│   │   ├── base.py                   WeatherProvider ABC, WeatherReading, error classes
+│   │   ├── normalization.py          THE one open-meteo -> TrailGuard normaliser
+│   │   ├── replay.py                 ReplayWeatherProvider (frozen snapshot, no network)
+│   │   └── open_meteo.py             OpenMeteoWeatherProvider (live, httpx, no key)
 │   ├── rules/
 │   │   ├── rules_v1.yaml             six rules R-A..R-F, all calibration-marked
 │   │   └── calibration_v1.yaml       evaluation metadata: clause table, bands, weights
 │   ├── smoke.py                      `python -m trailguard.smoke`: the chain, printed
+│   ├── weather_smoke.py              `python -m trailguard.weather_smoke`: route-aware
+│   │                                weather over four horizons, printed (Phase 2)
 │   ├── agent/                        TrailGuard's own runtime (spec 15)
 │   │   ├── harness.py                run_agent(): system prompt -> tool loop -> trace
 │   │   ├── skill_loader.py           load_skill_md(): raw text, never parsed
@@ -128,13 +137,17 @@ dgx-spark-hackathon/
 │
 ├── scenarios/                        synthetic scenario dataset (spec 13)
 │   ├── baseline/ edge_cases/ compound/
-├── replay/                           frozen GPX + weather snapshot (spec 17, 24)
+├── replay/                           frozen GPX + weather snapshots + device feeds
 │   ├── routes/                       scn_route_sample.gpx
-│   ├── weather/                      scn_weather_snapshot.json (open-meteo-shaped)
+│   ├── weather/                      scn_weather_snapshot.json (open-meteo-shaped, Phase 0,
+│   │                                 never rewritten) + scn_weather_future_hazard.json
+│   │                                 (Phase 2 synthetic demo fixture, marked as such)
 │   └── devices/                      one JSON feed per scenario
 │       (spec 24 also reserves replay/timelines/; it is NOT created, because the v1
 │        movement/device timelines live inline in each scenario YAML -- see
 │        replay/README.md section 1)
+├── scripts/                          test_live_weather.py -- the only path that may open a
+│                                     socket; never collected by pytest (spec 13, 14)
 ├── demo/                             Streamlit demo -- NOT created yet (Phase 6)
 ├── tests/                            Layer A safety-core + contract / fairness / packaging tests
 └── app/                              legacy empty scaffolding -- untouched, not imported
@@ -201,29 +214,35 @@ reproducible and a no-skill / with-skill pair is a controlled comparison. The de
 
 Phase 0 shipped contracts, the YAML rule pack (with its real loader), the harness loop,
 the skill text, the metric vocabulary and the docs. Phase 1 added the arithmetic that
-turns those contracts into numbers. The split below is what is already running versus
-what a later phase owns.
+turns those contracts into numbers; Phase 2 gave the last tool body a real weather
+acquisition path. The split below is what is already running versus what a later phase
+owns.
 
-| Area | Phase 1 (done) | Later |
-| --- | --- | --- |
-| Schemas | unchanged from Phase 0; still frozen, `extra="forbid"` | additive changes only, spec amendment first |
-| Route geometry | `routes/geometry.py`: geodesic metres, planar nearest-point, elevation from the GPX itself | a persistence model for "no longer on this route" |
-| Tools | real bodies for route context, projection, device state and `assess_risk` | Phase 2 for `get_weather_for_route_time` |
-| Safety core | declarative rule evaluation, ETA, sunset margin, soft score, hard-rule floor, R-F escalation, confidence | re-tuning is data-only; no new rules in the MVP |
-| Rule pack | `rules_v1.yaml` unchanged in Phase 1; `calibration_v1.yaml` added for evaluation metadata | re-tuning is data-only |
-| Replay | device feeds and the open-meteo-shaped weather snapshot are read by real loaders | live weather; scenario dataset growth (Phase 3+) |
-| Agent harness | unchanged from Phase 0 | Phase 3 providers wired; Phase 5 semantic trace fields |
-| Skill | `SKILL.md` v1 protocol text | revisions stay protocol-level, never implementation-level |
-| Evals | metric names, `MetricResult`, `EvalRunResult`, `ComparisonReport`, fairness preconditions | Phase 5 aggregation, DGX Spark evidence |
-| Demo | -- | Phase 6 Streamlit |
+| Area | Phase 1 (done) | Phase 2 (done) | Later |
+| --- | --- | --- | --- |
+| Schemas | unchanged from Phase 0; still frozen, `extra="forbid"` | one additive field, `WeatherForRouteTime.confidence_is_assumed` | additive changes only, spec amendment first |
+| Route geometry | `routes/geometry.py`: geodesic metres, planar nearest-point, elevation from the GPX itself | -- | a persistence model for "no longer on this route" |
+| Tools | real bodies for route context, projection, device state and `assess_risk` | real body for `get_weather_for_route_time`, replay + live | the horizon loop stays in the Skill (Phase 3), never in a tool |
+| Safety core | declarative rule evaluation, ETA, sunset margin, soft score, hard-rule floor, R-F escalation, confidence | unchanged; it consumes a `WeatherForRouteTime` and cannot tell which provider produced it | re-tuning is data-only; no new rules in the MVP |
+| Rule pack | `rules_v1.yaml` unchanged in Phase 1; `calibration_v1.yaml` added for evaluation metadata | unchanged | re-tuning is data-only |
+| Replay | device feeds and the open-meteo-shaped weather snapshot are read by real loaders | the same normaliser serves live responses; a second, clearly-marked synthetic fixture for the future-hazard demo | live weather; scenario dataset growth (Phase 3+) |
+| Weather acquisition | -- | `weather/`: provider ABC, shared normalisation, replay provider, live Open-Meteo provider with finite timeouts and one retry | other providers are opt-in, never a silent substitution |
+| Agent harness | unchanged from Phase 0 | unchanged; it still records a provider failure as an error, not as "not implemented" | Phase 3 providers wired; Phase 5 semantic trace fields |
+| Skill | `SKILL.md` v1 protocol text | unchanged (spec 21) | revisions stay protocol-level, never implementation-level |
+| Evals | metric names, `MetricResult`, `EvalRunResult`, `ComparisonReport`, fairness preconditions | unchanged | Phase 5 aggregation, DGX Spark evidence |
+| Demo | -- | -- | Phase 6 Streamlit |
 
 Phase 1 deliberately did **not** touch the harness, the skill text or the rule pack's
 thresholds -- `rules_v1.yaml` is byte-identical to its Phase 0 version, and every
-threshold change lives in the new `calibration_v1.yaml`.
+threshold change lives in the new `calibration_v1.yaml`. Phase 2 did not touch them
+either: `SKILL.md`, `rules_v1.yaml` and the Phase 0 weather fixture are all unchanged,
+and the only schema change is an additive field with a default.
 
 Forbidden in Phase 1 by spec 26: UI polish, wearables, mobile, databases, dozens of
 rules, trained models, multi-agent designs, and calling a language model to compute
-risk.
+risk. Phase 2 adds to that (spec 23): no agent harness execution, no tool-calling
+agent, no benchmark, no map UI, and no integration with the local Qwen model -- the
+DGX Spark service and the Phase 2 code stay isolated.
 
 ## 7. Boundaries worth restating
 
@@ -241,9 +260,22 @@ risk.
   `review_status: pending` -- never an industry safety standard (spec 7).
 * No language model participates in the safety core. The chain from GPX to verdict runs
   with `STEPFUN_API_KEY` unset, and a test deletes the key variables to prove it (spec
-  20). `python -m trailguard.smoke` prints the whole chain for inspection.
+  20). `python -m trailguard.smoke` prints the whole chain for inspection, and
+  `python -m trailguard.weather_smoke` prints the route-aware weather chain across four
+  horizons.
+* `python -m pytest` makes no external HTTP call. The live provider is exercised in the
+  suite through `httpx.MockTransport` and the socket layer is closed by an autouse
+  fixture, so the guarantee is structural rather than promised (spec 13). The only
+  path that may open a socket is `scripts/test_live_weather.py`, which pytest never
+  collects and which reports `LIVE WEATHER NETWORK UNAVAILABLE` instead of faking
+  success (spec 14).
+* A live failure is never answered by a replay fixture. Every failure raises a
+  subclass of `WeatherProviderError` naming what was attempted (spec 11, 17).
 * No CUDA, no GPU and no Numba anywhere in the repository (spec 24).
 * The safety core reads no wall clock: every instant is passed in, and
   `RiskResult.computed_at` *is* the analysis instant, so a replay reproduces byte for
-  byte (spec 19).
+  byte (spec 19). The one exception in the package is the live provider's
+  `retrieved_at` -- the instant a forecast was actually fetched, which is the age a
+  live reading is honestly measured against, and which is disclosed in the reading's
+  notes.
 * The legacy `app/` scaffolding is neither imported nor modified.

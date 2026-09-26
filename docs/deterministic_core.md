@@ -11,7 +11,7 @@ never contributes a number to them (spec 1, 20, 24).
 
 ```bash
 .venv/bin/python -m trailguard.smoke     # runs the whole chain and prints every stage
-.venv/bin/python -m pytest -q            # 487 tests, including the numbers below
+.venv/bin/python -m pytest -q            # 544 tests, including the numbers below
 ```
 
 ---
@@ -23,13 +23,11 @@ real GPX (replay/routes/scn_route_sample.gpx)
   -> get_route_context(route_id, position, timestamp)      RouteContext
   -> get_user_device_context(device_id)                    DeviceState   (replay feed, t=0 row)
   -> project_route_state(route, movement, h, fatigue)      RouteProjection (one call per horizon)
-  -> replay weather snapshot.at(projected_arrival_time)    WeatherForRouteTime
+  -> get_weather_for_route_time(projected_position,
+                                 projected_arrival_time)  WeatherForRouteTime
   -> assess_risk(route, weather, device, time, projection) RiskResult
 ```
 
-The 30/60/120 loop above `project_route_state` belongs to the Skill (`SKILL.md`),
-never to a tool: one call answers one horizon, and there is no `forecast_risk`
-aggregate (spec 4.2). `python -m trailguard.smoke` runs the loop once, for the
 The 30/60/120 loop above `project_route_state` belongs to the Skill (`SKILL.md`),
 never to a tool: one call answers one horizon, and there is no `forecast_risk`
 aggregate (spec 4.2). `python -m trailguard.smoke` runs the loop once, for the
@@ -319,21 +317,26 @@ now uses six.
 * **Battery drain is one calibrated rate for every device.** `DeviceState` cannot carry
   a per-device rate, so R-E projects at 4 %/h from `calibration_v1.yaml`; a caller who
   knows better builds the engine with a different calibration.
-* **Weather is replay-only in Phase 1.** `get_weather_for_route_time` is still a Phase 2
-  stub; the core reads `replay/weather/scn_weather_snapshot.json`, which is stored in
-  **open-meteo's response shape** -- parallel `hourly` arrays, `utc_offset_seconds`
-  for its naive local row instants, `hourly_units` naming each variable's unit --
-  because Phase 2 will parse that same shape from the live API. Three conversions are
-  load-bearing and live in `trailguard/replay/weather.py`, not in the data:
-  precipitation arrives as **percent** and becomes a probability (so `8` percent does
-  not read as an impossible probability that trips R-C's 0.7 threshold), the row
-  instants are **naive local wall-clock times** made aware using the declared offset
-  (so a 12:00 row means 10:00Z, not 12:00Z), and a declared unit the parser does not
-  know is a loud error rather than a guess. The asset declares **no provider
-  confidence**, so the snapshot term is charged `confidence_unknown_value` (0.5)
-  rather than assumed perfect. Nearest row wins, nothing is extrapolated past the
-  series, and stale snapshots are used *as given* with their age reported alongside
-  (180-minute demo freshness budget). `tests/test_replay_weather.py` pins all of it.
+* **Weather is no longer replay-only.** Phase 1 read `replay/weather/scn_weather_snapshot.json`
+  through a stub tool; Phase 2 gave `get_weather_for_route_time` a real body with two
+  acquisition modes (spec 17), replay and live Open-Meteo. What did not change is the
+  part that matters here: the snapshot is still stored in **open-meteo's response
+  shape** -- parallel `hourly` arrays, `utc_offset_seconds` for its naive local row
+  instants, `hourly_units` naming each variable's unit -- and live responses are parsed
+  by that same parser, `trailguard/weather/normalization.py`. Three conversions are
+  load-bearing and live in the parser, not in the data: precipitation arrives as
+  **percent** and becomes a probability (so `8` percent does not read as an impossible
+  probability that trips R-C's 0.7 threshold), the row instants are **naive local
+  wall-clock times** made aware using the declared offset (so a 12:00 row means 10:00Z,
+  not 12:00Z), and a declared unit the parser does not know is a loud error rather than
+  a guess. The asset declares **no provider confidence**, so its confidence term is
+  charged `confidence_unknown_value` (0.5) and flagged `confidence_is_assumed`, never
+  assumed perfect. Nearest row wins, nothing is extrapolated past the series, and stale
+  snapshots are used *as given* with their age reported alongside (180-minute demo
+  freshness budget). `tests/test_replay_weather.py` still pins all of it, and
+  `tests/test_weather_providers.py` pins the same behaviour on the live path. The
+  acquisition modes, the grid rule and the failure contract are documented in
+  `docs/route_aware_weather.md`.
 
   The asset was rewritten once during this phase into a TrailGuard-native shape, which
   would have changed the frozen data silently (dropped the 06:00-09:00 rows, altered

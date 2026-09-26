@@ -58,8 +58,15 @@ SCENARIOS_DIR: Path = REPO_ROOT / "scenarios"
 REPLAY_ROUTES_DIR: Path = REPO_ROOT / "replay" / "routes"
 REPLAY_WEATHER_DIR: Path = REPO_ROOT / "replay" / "weather"
 
-#: Every scenario YAML file in the dataset, in a stable order.
+#: Scenario YAML files in the dataset, in a stable order.
 SCENARIO_FILES: list[Path] = sorted(SCENARIOS_DIR.rglob("*.yaml"))
+
+#: Spec 14 keeps the live-weather smoke script out of pytest entirely: the suite must
+#: make no external HTTP call (spec 13), and a collected script that opens a socket
+#: would break that the moment somebody ran ``pytest scripts/``. Listed here as well
+#: as being outside ``testpaths``, so the exclusion does not depend on a configuration
+#: nobody reads.
+collect_ignore: list[str] = ["../scripts/test_live_weather.py"]
 
 #: Frozen horizons (spec 6.1) in canonical order.
 HORIZON_VALUES: list[str] = [horizon.value for horizon in Horizon.all_horizons()]

@@ -32,7 +32,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from ..replay.weather import DEFAULT_SNAPSHOT_PATH, load_weather_snapshot
+from ..replay.weather import load_weather_snapshot
 from .base import (
     WeatherMode,
     WeatherProvider,
@@ -99,9 +99,10 @@ class ReplayWeatherProvider(WeatherProvider):
     in the interpretation of ``hourly_units`` cannot be live-only.
 
     Construction:
-        * ``snapshot_ref`` -- a path or replay-directory-relative name. ``None``
-          falls back to the shipped scenario snapshot, which is what the frozen
-          replay scenarios name.
+        * ``snapshot_ref`` -- a path or replay-directory-relative name. **Required**:
+          replay answers from the fixture the caller named, so a policy that chose
+          ``mode = "replay"`` without naming one is an error rather than a silent
+          default (spec 17) -- a benchmark must be able to say *which* fixture it ran.
         * ``snapshot`` -- an already parsed snapshot, for a caller (a test, a
           fixture that lives outside the repo) that built it itself.
     """
@@ -115,7 +116,11 @@ class ReplayWeatherProvider(WeatherProvider):
         snapshot: object | None = None,
     ) -> None:
         self._path = resolve_snapshot_path(snapshot_ref) if snapshot is None else None
-        self._ref = str(snapshot_ref or DEFAULT_SNAPSHOT_PATH.name)
+        self._ref = (
+            str(snapshot_ref)
+            if snapshot_ref
+            else "<an injected snapshot; the caller built it, so no file backs it>"
+        )
         if snapshot is not None:
             self._snapshot = snapshot
         else:

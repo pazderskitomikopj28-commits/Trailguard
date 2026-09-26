@@ -22,6 +22,14 @@ route = [
     "shapely>=2.0",
     "pyproj>=3.7",
 ]
+# Live weather (Phase 2: the Open-Meteo provider in mode="live"). Replay Mode needs
+# nothing beyond the base install -- the frozen snapshot is a JSON file -- so the HTTP
+# client is an extra a caller opts into by choosing live weather. It is also the one
+# dependency that must never be required by the test suite (spec 13): pytest runs
+# against httpx.MockTransport, and scripts/test_live_weather.py is never collected.
+weather = [
+    "httpx>=0.27",
+]
 # Model transports (Phase 3 StepFun Step 5 Preview, Phase 4 the local DGX Spark model).
 providers = [
     "openai>=1.55",

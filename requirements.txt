@@ -32,6 +32,9 @@ pytest==9.1.1
 # phase, so a later phase opts in explicitly:
 #
 #   pip install -e ".[route]"      # Phase 1  -- gpxpy / shapely / pyproj
+#   pip install -e ".[weather]"    # Phase 2  -- httpx (live Open-Meteo only; replay
+#                                  #             Mode and the whole test suite need
+#                                  #             nothing beyond the base install)
 #   pip install -e ".[providers]"  # Phase 3+ -- openai / python-dotenv
 #   pip install -e ".[demo]"       # Phase 6  -- streamlit
 #

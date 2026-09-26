@@ -37,16 +37,37 @@ assessed -- is entirely SKILL.md's and appears nowhere here. The sentence is
 shared with the baseline on purpose: removing it would weaken the baseline to
 flatter the treatment, which spec 3.2 forbids just as firmly as contamination.
 
+What the harness records (Phase 3)
+==================================
+When a tool returns a typed contract, the harness copies the *typed* parts of
+it into the evidence trace -- and only the typed parts. A successful
+``assess_risk`` result carries its own ``horizon``, ``hard_rules_triggered``,
+``drivers``, ``confidence``, ``safety_margins.weather_freshness_min`` and
+``risk_level``; those are copied into ``horizon_checks``, ``triggered_rules``,
+``risk_drivers``, ``core_risk_level`` and ``core_confidence``. The freshness
+verdict for a horizon is the one comparison the harness does make -- the age the
+core actually used against the snapshot's own ``WeatherPolicy`` -- because
+"stale" is meaningless without the budget it was measured against, and the
+budget is part of the context the tool already consumed.
+
+What the harness still refuses to do is infer trace content from the model's
+*prose*. ``final_risk_level``, ``confidence`` and ``uncertainty_disclosed``
+describe what the agent *claimed*, and reading them out of a paragraph is a
+semantic judgement that belongs to the eval layer (Phase 5): the harness has no
+opinion about English, and a run whose answer happens to contain the word
+"RED" must not get a RED trace entry. The two halves stay separate on purpose,
+so a benchmark can measure the gap between what the tools produced
+(``core_risk_level``) and what the agent said (``final_risk_level``).
+
 Boundaries
 ==========
 Not responsible for (and deliberately NOT implemented here):
-* the 30/60/120 horizon loop, freshness checks, missing-data protocol or safety
-  overrides -- those are the SKILL's job (spec 10); this harness only supplies
-  the loop of "model turn -> tool results -> next model turn";
-* interpreting a tool result to fill ``horizons_checked`` / ``triggered_rules`` /
-  ``final_risk_level`` in the trace -- the harness records the *tool-call*
-  evidence, and the eval/demo layer records the semantic evidence by inspecting
-  the run's final answer (Phase 5);
+* the 30/60/120 horizon loop, missing-data protocol or safety overrides --
+  those are the SKILL's job (spec 10); this harness only supplies the loop of
+  "model turn -> tool results -> next model turn", and it records the horizons
+  the *model* chose to assess rather than iterating them itself;
+* repairing a run: it never re-orders tool calls, retries a failed call, calls
+  a tool on the model's behalf, or writes the model's final answer for it;
 * any safety logic, weather fetching or scoring (``trailguard.risk_core``,
   ``trailguard.tools``).
 """
@@ -62,14 +83,15 @@ from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, ValidationError
 
-from ..providers.base import ChatMessage, ModelProvider, ModelResponse
-from ..schemas.context import TrailGuardContext
+from ..providers.base import ChatMessage, ModelProvider, ModelResponse, ProviderError
+from ..schemas.context import TrailGuardContext, WeatherPolicy
+from ..schemas.risk import RiskResult
 from ..schemas.scenario import ToolName
-from ..schemas.trace import EvidenceTrace
-from .skill_loader import load_skill_md
+from ..schemas.trace import EvidenceTrace, HorizonCheckRecord
+from .skill_loader import load_skill_md, skill_identity
 from .trace import TraceCollector
 
-__all__ = ["AgentRunResult", "HARNESS_BASE_SYSTEM_PROMPT", "run_agent"]
+__all__ = ["AgentRunResult", "HARNESS_BASE_SYSTEM_PROMPT", "StopReason", "ToolOutcome", "run_agent"]
 
 #: Instruction block that is byte-identical in both skill conditions. It is
 #: deliberately *neutral*: it describes the runtime mechanics of the harness and
@@ -96,7 +118,49 @@ Answer the user's question using the evidence you actually gathered, and cite \
 the tool outputs you relied on."""
 
 #: Stop reasons of :func:`run_agent` (frozen vocabulary for the eval layer).
-StopReason = Literal["completed", "max_steps", "provider_error"]
+#:
+#: Five values, because they answer five different questions, and collapsing any
+#: two of them would hide a real failure mode behind a different one:
+#:
+#: ``completed``
+#:     The model answered without requesting further tool calls.
+#: ``max_steps``
+#:     The turn budget ran out while the model was still calling tools.
+#: ``provider_error``
+#:     The model never answered: a transport failure (see
+#:     :class:`~trailguard.providers.base.ProviderError`) or any other
+#:     exception raised inside ``model_provider.generate``. ``final_response``
+#:     is empty, because no answer exists.
+#: ``tool_error``
+#:     A tool the model called failed, and the run was configured to stop on
+#:     the first failure (``tool_failure_policy="stop"``). The model asked for
+#:     something reasonable; the tool could not deliver it.
+#: ``invalid_tool_call``
+#:     The model asked for a tool that was not offered, or supplied arguments
+#:     that failed the tool's own input contract, and the run was configured to
+#:     stop on the first such call. This is the model's failure, not the
+#:     tool's, and a benchmark must be able to tell the two apart: "the agent
+#:     hallucinated a tool" and "the weather endpoint is down" are not the same
+#:     finding.
+#:
+#: The default ``tool_failure_policy="report"`` never produces the last two: a
+#: failed call is recorded and fed back to the model, which is free to correct
+#: itself, and only a completed run, an exhausted budget or a provider failure
+#: can end a loop. That default is the pre-Phase-3 behaviour, preserved so a
+#: later phase cannot silently change what a stop reason means.
+StopReason = Literal["completed", "max_steps", "provider_error", "tool_error", "invalid_tool_call"]
+
+#: How a failed tool call is handled: ``"report"`` (record it, hand the failure
+#: back to the model, keep looping) or ``"stop"`` (end the run immediately with
+#: ``tool_error`` / ``invalid_tool_call``). Identical in both skill conditions,
+#: and identical for every run of a given experiment: it is a harness policy,
+#: never something derived from ``skill_enabled``.
+ToolFailurePolicy = Literal["report", "stop"]
+
+#: What actually happened to one tool call. ``ok`` means the tool ran and
+#: returned; the other four are the model's fault (``invalid_tool_call``,
+#: ``unknown_tool``) or the tool's (``tool_error``, ``not_implemented``).
+ToolOutcome = Literal["ok", "invalid_tool_call", "unknown_tool", "tool_error", "not_implemented"]
 
 #: Size cap for *unstructured* tool results only (a raw string or a mapping the
 #: caller handed back). A pydantic contract payload is never truncated: it is a
@@ -252,6 +316,11 @@ class AgentRunResult:
     Responsibility: return the final answer together with the evidence trace and
     why the loop stopped, so the eval layer never has to re-read a log.
     Not responsible for: scoring the run (the repo-root ``evals`` package, Phase 5).
+
+    ``final_response`` is the empty string exactly when the run did not produce
+    one -- ``max_steps``, ``provider_error``, or a policy-driven early stop. The
+    harness never writes an answer on the model's behalf, so an empty field means
+    "there is no answer", not "the answer was empty" (spec 3.1, 10.5).
     """
 
     run_id: str
@@ -274,6 +343,7 @@ def run_agent(
     max_tokens: int = 2048,
     scenario_id: str | None = None,
     started_at: datetime | None = None,
+    tool_failure_policy: ToolFailurePolicy = "report",
 ) -> AgentRunResult:
     """Run one agent episode and return its answer plus its evidence trace.
 
@@ -300,6 +370,11 @@ def run_agent(
         max_tokens: Output cap (identical in both conditions).
         scenario_id: Scenario id written into the evidence trace.
         started_at: Run start instant; defaults to the current UTC instant.
+        tool_failure_policy: ``"report"`` (default) feeds a failed tool call back
+            to the model and keeps looping; ``"stop"`` ends the run with
+            ``tool_error`` or ``invalid_tool_call``. A harness policy, so it must
+            be the same for every run of an experiment -- never derived from
+            ``skill_enabled``.
 
     Returns:
         An :class:`AgentRunResult` with the final answer, the frozen evidence
@@ -320,11 +395,16 @@ def run_agent(
         skill_text = load_skill_md(skill_path)
         system_prompt = f"{HARNESS_BASE_SYSTEM_PROMPT}\n\n{skill_text}"
         skill_loaded = True
+        # Identity of the text that was actually injected: the version its own
+        # frontmatter declares and a hash of the exact bytes. Recorded as
+        # provenance, never read as protocol content (spec 3.1, 18).
+        identity = skill_identity(skill_text)
     else:
         # Nothing skill-related in the baseline system prompt: no mention of the
         # skill, no weakened instructions, no different tools (spec 3.1).
         system_prompt = HARNESS_BASE_SYSTEM_PROMPT
         skill_loaded = False
+        identity = None
 
     provider_label, model_label = _provider_label(model_provider)
     collector = TraceCollector.new(
@@ -344,6 +424,9 @@ def run_agent(
         },
         started_at=started,
     )
+    if identity is not None:
+        collector.skill_version = identity.version
+        collector.skill_sha256 = identity.sha256
 
     messages: list[ChatMessage] = [
         ChatMessage(
@@ -373,10 +456,20 @@ def run_agent(
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
+        except ProviderError:
+            # A transport failure is not an agent answer. The run stops with
+            # stop_reason 'provider_error' and the trace still records every
+            # tool call that happened before it. The exception itself is not
+            # re-raised and not logged here: its class names the failure kind,
+            # and a message could carry a rejected credential.
+            stop_reason = "provider_error"
+            break
         except Exception:
-            # A provider/transport failure is not an agent answer. The run stops
-            # with stop_reason 'provider_error' and the trace still records every
-            # tool call that happened before it.
+            # Anything else a provider raises is treated the same way. Widening
+            # this to ``except Exception`` is deliberate -- an unexpected
+            # RuntimeError inside a transport must still stop the run honestly
+            # rather than escape into whatever is orchestrating the benchmark --
+            # but the two clauses stay separate so the intended path is legible.
             stop_reason = "provider_error"
             break
 
@@ -392,8 +485,14 @@ def run_agent(
                     tool_calls=list(response.tool_calls),
                 )
             )
+            stop_on_failure = False
             for call in response.tool_calls:
-                summary = _execute_tool_call(call, registry, collector)
+                summary, outcome = _execute_tool_call(
+                    call,
+                    registry,
+                    collector,
+                    weather_policy=context.weather_policy,
+                )
                 messages.append(
                     ChatMessage(
                         role="tool",
@@ -402,6 +501,16 @@ def run_agent(
                         name=call.name,
                     )
                 )
+                if tool_failure_policy == "stop" and outcome not in ("ok",):
+                    stop_on_failure = True
+                    stop_reason = (
+                        "invalid_tool_call"
+                        if outcome in ("invalid_tool_call", "unknown_tool")
+                        else "tool_error"
+                    )
+                    break
+            if stop_on_failure:
+                break
             continue
 
         final_response = response.content or ""
@@ -418,35 +527,93 @@ def run_agent(
     )
 
 
+def _record_risk_evidence(
+    result: Any,
+    collector: TraceCollector,
+    weather_policy: WeatherPolicy | None,
+) -> None:
+    """Copy the bonded parts of a real ``assess_risk`` result into the trace.
+
+    Responsibility: fill ``horizon_checks``, ``triggered_rules``, ``risk_drivers``
+    and the core's own verdict from a contract the tool actually returned. Not
+    responsible for: deciding which horizons *should* have been assessed (that is
+    the skill protocol and the Phase 5 metrics), inferring anything from the
+    model's answer, or applying any safety logic.
+
+    Every value is copied verbatim. The only comparison made here is the
+    freshness one, and it is a comparison the trace cannot be read without:
+    ``freshness_ok`` is the age the core reported, measured against the
+    snapshot's own ``max_freshness_min`` budget. An age the core could not
+    compute leaves ``freshness_ok`` as ``None`` -- "not checkable" -- rather than
+    being silently treated as fresh.
+
+    ``missing_data`` stays empty on purpose. Which fields were absent *at this
+    horizon* is the skill's missing-data protocol (spec 10.3); the harness has a
+    whole-run snapshot and copying its ``missing_fields`` onto one horizon would
+    attribute run-level gaps to a moment that did not experience them.
+    """
+    if not isinstance(result, RiskResult):
+        # The registry is the contract boundary; a caller who registered a
+        # different return type gets no fabricated risk evidence.
+        return
+
+    age = result.safety_margins.weather_freshness_min
+    budget = weather_policy.max_freshness_min if weather_policy is not None else None
+    freshness_ok: bool | None = None
+    if age is not None and budget is not None:
+        freshness_ok = age <= budget
+
+    collector.record_horizon(
+        HorizonCheckRecord(
+            horizon=result.horizon,
+            weather_freshness_min=age,
+            freshness_ok=freshness_ok,
+            missing_data=[],
+        )
+    )
+    collector.record_triggered_rules(list(result.hard_rules_triggered))
+    collector.record_risk_drivers(list(result.drivers))
+    collector.record_core_verdict(result.horizon, result.risk_level, result.confidence)
+
+
 def _execute_tool_call(
     call: Any,
     registry: dict[ToolName, Callable[..., Any]],
     collector: TraceCollector,
-) -> str:
-    """Execute one requested tool call and return the tool-result message text.
+    *,
+    weather_policy: WeatherPolicy | None = None,
+) -> tuple[str, ToolOutcome]:
+    """Execute one requested tool call; return ``(tool message text, outcome)``.
 
     Responsibility: run the requested tool with the model's arguments, and record
-    exactly what happened -- success, ``NotImplementedError`` (a Phase 0 stub),
-    or any other failure -- in the evidence trace. Not responsible for: retrying,
-    repairing arguments or substituting another tool; a failed call is reported
-    to the model as a failure and the model decides what to do next.
+    exactly what happened -- success, ``NotImplementedError`` (a Phase 0 stub), a
+    contract violation, or any other failure -- in the evidence trace. Not
+    responsible for: retrying, repairing arguments or substituting another tool; a
+    failed call is reported to the model as a failure and the model decides what
+    to do next.
 
     A requested name that is not a registered ``ToolName`` cannot be represented
     in :class:`~trailguard.schemas.trace.ToolCallRecord`; it is reported back to
     the model as an error message and is not counted as a tool call.
 
     Provenance the harness *can* fill honestly: the ``source`` of a successful
-    ``get_weather_for_route_time`` result, and nothing else. Everything the
-    protocol asks for -- which horizons were checked, which rules fired, what was
-    missing -- is the skill's to report, and this harness refuses to guess at it
-    (spec 10, 18).
+    ``get_weather_for_route_time`` result, and the bonded parts of a successful
+    ``assess_risk`` result. Everything else the protocol asks for -- which
+    horizons the agent *claimed*, what it *said* was missing, what level it
+    finally asserted -- has to come out of the model's own answer, and this
+    harness refuses to guess at it (spec 10, 18).
     """
     try:
         tool = ToolName(str(call.name))
     except ValueError:
+        # The outcome is recorded so a "stop on failure" policy can act on it,
+        # but no ToolCallRecord exists: the contract cannot name a tool that is
+        # not in the frozen registry, and inventing one would be worse than
+        # omitting it.
         return (
             f"error: unknown tool {call.name!r}; the Phase 0 registry holds only "
-            f"{[t.value for t in ToolName]}"
+            f"{[t.value for t in ToolName]}",
+            "unknown_tool",
         )
 
     arguments = _coerce_arguments(call.arguments)
@@ -461,7 +628,7 @@ def _execute_tool_call(
             status="error",
             error="tool is registered but was not passed to run_agent(tools=...)",
         )
-        return summary
+        return summary, "tool_error"
 
     # Validate against the tool's own input contract before invoking anything.
     # The JSON schemas the harness advertises (tool_schema_dicts) are the same
@@ -495,7 +662,7 @@ def _execute_tool_call(
                 status="error",
                 error=error,
             )
-            return error
+            return error, "invalid_tool_call"
 
     try:
         result = func(**arguments)
@@ -510,7 +677,7 @@ def _execute_tool_call(
             status="not_implemented",
             error=error,
         )
-        return summary
+        return summary, "not_implemented"
     except TypeError as exc:
         # By far the most common cause: the model emitted arguments that do not
         # match the tool signature (missing/unknown keyword).
@@ -523,7 +690,7 @@ def _execute_tool_call(
             status="error",
             error=error,
         )
-        return error
+        return error, "invalid_tool_call"
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
         summary = f"{tool.value}: error: {error}"
@@ -535,7 +702,7 @@ def _execute_tool_call(
             status="error",
             error=error,
         )
-        return summary
+        return summary, "tool_error"
 
     summary = _summarize_result(tool, result)
     collector.record_tool_call(
@@ -548,9 +715,11 @@ def _execute_tool_call(
     )
     if tool is ToolName.GET_WEATHER_FOR_ROUTE_TIME:
         # Spec 18 requires the weather source as trace content. The tool result
-        # is the only place that fact exists in Phase 0 -- there is no skill-side
+        # is the only place that fact exists -- there is no skill-side
         # bookkeeping to read it from -- so the harness copies the provider id of
         # the observation the model actually received. It copies the value, it
         # never invents or prefers one.
         collector.record_weather_source(getattr(result, "source", None))
-    return summary
+    elif tool is ToolName.ASSESS_RISK:
+        _record_risk_evidence(result, collector, weather_policy)
+    return summary, "ok"

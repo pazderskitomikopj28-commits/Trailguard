@@ -41,7 +41,7 @@ from stub_provider import FailingProvider, StubProvider
 
 from trailguard.agent import HARNESS_BASE_SYSTEM_PROMPT, run_agent
 from trailguard.agent.harness import _MAX_SUMMARY_CHARS
-from trailguard.agent.skill_loader import load_skill_md
+from trailguard.agent.skill_loader import load_skill_md, skill_identity
 from trailguard.providers.base import ModelResponse, ToolCallRequest
 from trailguard.schemas import ToolName
 from trailguard.schemas.trace import REDACTED
@@ -489,6 +489,83 @@ def test_unknown_tool_request_is_reported_not_traced() -> None:
     assert "unknown tool" in provider.messages_of(1)[-1].content
 
 
+# --------------------------------------------------------------------------- #
+# tool_failure_policy="stop": the run ends on the model's first bad call
+# --------------------------------------------------------------------------- #
+
+
+def test_a_stop_policy_ends_the_run_on_the_models_invalid_call() -> None:
+    """``invalid_tool_call`` is the model's failure, and the policy stops on it.
+
+    The trace keeps the rejection the contract produced, and the run ends rather
+    than continuing to a turn that would have to reason over a call the harness
+    already refused.
+    """
+    provider = StubProvider(
+        [
+            ModelResponse(content=None, tool_calls=[_tool_call("get_route_context", {"route_id": "nope"})]),
+            _final_answer(),
+        ]
+    )
+
+    result = _run(provider, skill_enabled=False, tool_failure_policy="stop")
+
+    assert result.stop_reason == "invalid_tool_call"
+    assert result.final_response == "", "a stopped run has no answer"
+    assert len(provider.calls) == 1, "the model is not given a second turn"
+    assert "invalid arguments for get_route_context" in result.trace.tool_calls[0].error
+
+
+def test_a_stop_policy_ends_the_run_on_the_tools_failure() -> None:
+    """``tool_error`` is the tool's failure, and it is a different stop reason.
+
+    Registering a tool that raises while the registry answers a valid call for
+    every other name is what separates the two: the same policy, a different
+    failure, and the benchmark must be able to tell them apart.
+    """
+    from trailguard.schemas import ToolName as Names
+
+    def _boom(**_kwargs: object) -> object:
+        raise RuntimeError("replay asset is missing")
+
+    tools = dict(TOOL_FUNCTIONS)
+    tools[Names.GET_ROUTE_CONTEXT] = _boom
+    provider = StubProvider([_route_context_call(), _final_answer()])
+
+    result = run_agent(
+        task=TASK,
+        context=make_context(),
+        model_provider=provider,
+        skill_enabled=False,
+        tools=tools,
+        tool_failure_policy="stop",
+    )
+
+    assert result.stop_reason == "tool_error"
+    assert result.final_response == ""
+    assert "RuntimeError" in result.trace.tool_calls[0].error
+
+
+def test_the_default_policy_reports_a_failure_and_keeps_looping() -> None:
+    """``report`` is the default: the failure is fed back and the model may recover.
+
+    This is what makes a ``tool_error`` / ``invalid_tool_call`` stop reason
+    impossible without an operator opting in -- the default can only end in
+    ``completed``, ``max_steps`` or ``provider_error``.
+    """
+    provider = StubProvider(
+        [
+            ModelResponse(content=None, tool_calls=[_tool_call("get_route_context", {"route_id": "nope"})]),
+            _final_answer(),
+        ]
+    )
+
+    result = _run(provider, skill_enabled=False)
+
+    assert result.stop_reason == "completed"
+    assert len(provider.calls) == 2, "the model got a second turn after the reported failure"
+
+
 def test_missing_skill_file_fails_loudly_in_the_with_skill_condition(tmp_path) -> None:
     """A with-skill run must never silently degrade into a baseline run (spec 3.1)."""
     provider = StubProvider([_final_answer()])
@@ -587,7 +664,13 @@ def test_the_baseline_prompt_is_exactly_the_shared_runtime_instructions() -> Non
     assert baseline_prompt == HARNESS_BASE_SYSTEM_PROMPT
     assert treatment_prompt.startswith(HARNESS_BASE_SYSTEM_PROMPT)
     assert len(treatment_prompt) > len(baseline_prompt)
-    assert HARNESS_BASE_SYSTEM_PROMPT not in treatment_prompt.replace(HARNESS_BASE_SYSTEM_PROMPT, "", 1) or True
+    # Nothing may be *added* to the baseline beyond the neutral runtime mechanics.
+    # The suffix that remains once the base prompt is removed must not contain the
+    # base prompt again: a doubled prompt would mean the skill text carried a
+    # second copy of the runtime instructions, and the two conditions would no
+    # longer differ by the skill alone. (A previous version ended this assertion
+    # with ``or True``, which made it unfalsifiable -- no test at all.)
+    assert HARNESS_BASE_SYSTEM_PROMPT not in treatment_prompt.replace(HARNESS_BASE_SYSTEM_PROMPT, "", 1)
 
 
 def test_the_shared_prompt_forbids_fabricating_a_tool_result() -> None:
@@ -612,7 +695,37 @@ def test_skill_condition_is_recorded_in_the_trace(skill_enabled: bool) -> None:
     result = _run(provider, skill_enabled=skill_enabled)
 
     assert result.trace.skill_loaded is skill_enabled
-    assert result.trace.skill_version is None  # the loader never parses SKILL.md
+    if skill_enabled:
+        # Identity only: the version the skill's own frontmatter declares, and a
+        # hash of the text that was actually injected. Nothing else about the
+        # skill is read on the Python side (spec 3.1).
+        identity = skill_identity(load_skill_md())
+        assert result.trace.skill_version == identity.version
+        assert result.trace.skill_sha256 == identity.sha256
+    else:
+        # A baseline run has no skill text to identify, and must not claim one.
+        assert result.trace.skill_version is None
+        assert result.trace.skill_sha256 is None
+
+
+def test_the_recorded_skill_hash_is_the_hash_of_the_injected_text(
+    tmp_path: Path,
+) -> None:
+    """The trace identifies the protocol by the bytes the model actually saw."""
+    # A second skill file with the same frontmatter version but different body:
+    # same declared version, different protocol. The hash must distinguish them,
+    # otherwise "skill v1.0.0" would silently cover a rewritten skill.
+    variant = tmp_path / "SKILL.md"
+    variant.write_text(
+        load_skill_md().replace("Explanation Protocol", "Something Else Entirely"),
+        encoding="utf-8",
+    )
+    identity = skill_identity(load_skill_md())
+
+    result = _run(StubProvider([_final_answer()]), skill_enabled=True, skill_path=variant)
+
+    assert result.trace.skill_version == identity.version, "the frontmatter version is the same"
+    assert result.trace.skill_sha256 != identity.sha256, "but the protocol text is not"
 
 
 def test_sampling_params_are_recorded_for_reproducibility() -> None:

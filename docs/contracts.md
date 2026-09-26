@@ -80,6 +80,15 @@ acquires and normalises a reading.
   frozen fixture can never be substituted for a real question by accident. A policy
   with `mode = "replay"` reads the snapshot its `snapshot_ref` names and refuses
   rather than defaulting to another file. A live failure never falls back to replay.
+* **Phase 3 finding -- the mode is not reachable from a run.** The *contract* carries
+  only `lat`, `lon`, `target_time`, so a model can never ask for replay mode even
+  though the Python function accepts `policy=` and a scenario declares
+  `WeatherPolicy(mode="replay", snapshot_ref=...)`. A replay scenario must therefore
+  have its policy bound from outside the call -- that is what
+  `trailguard.agent.replay_runner.scenario_registry` does, at the registry level and
+  with no contract change. Recorded, not fixed in-phase: the field belongs to the
+  phase that owns the weather contract. See
+  [`docs/agent_runtime.md` §9](docs/agent_runtime.md).
 * **Confidence (spec 9):** `confidence_is_assumed` is `True` when the provider
   declared no figure and the value is the calibration's `confidence_unknown_value`
   charged in its place. Open-Meteo declares none, so a live reading always carries a
@@ -136,6 +145,14 @@ acquires and normalises a reading.
 * **Feed semantics:** a feed is a frozen list of `(t_offset_min, DeviceState)` rows. It
   is addressed by id, never by a path, and a request past its last row is refused
   rather than extrapolated -- a device feed is a replay asset, not a model.
+* **Phase 3 finding -- the id is not given to the agent.** The id is a file stem under
+  `replay/devices/`, and nothing hands it to a run: `Scenario` declares
+  `route_ref` and `weather_snapshot_ref` but no `device_feed_ref`, and the context
+  snapshot carries no device id, so a faithful agent has no way to know which feed to
+  ask for and will record a failed call. Both conditions are affected identically, so
+  the comparison stays fair, but a live run's device-call failure is a *contract gap*
+  and not a model mistake until this field exists. See
+  [`docs/agent_runtime.md` §9](docs/agent_runtime.md).
 
 ## `assess_risk`
 
@@ -147,10 +164,25 @@ acquires and normalises a reading.
   score, compound soft signals escalate one level -- and return level, score, drivers,
   triggered hard rules, confidence, evidence references and explainable safety margins
   with physical units.
-* **Input:** `route_state: RouteContext`, `weather_state: WeatherForRouteTime | None`,
-  `user_device_state: DeviceState`, `time_state: TimeState`, and optionally
-  `projected_state: RouteProjection | None`, `horizon_min`, `weather_freshness_min`,
-  `data_quality` and a pre-built `engine`
+* **Input:** the model-facing contract is `AssessRiskInput`, and it carries exactly
+  five fields -- `route_state: RouteContext`, `weather_state: WeatherForRouteTime`
+  (**required**, `Field(...)`), `user_device_state: DeviceState`,
+  `time_state: TimeState`, `projected_state: RouteProjection | None`. The harness
+  validates arguments against this contract, so `weather_state` is mandatory *from
+  a run*: a model that omits it is refused with
+  `invalid arguments for assess_risk: weather_state: Field required` and the call
+  is recorded as `invalid_tool_call`. The *Python* function `assess_risk()`
+  additionally takes the keyword-only `horizon_min`, `weather_freshness_min`,
+  `data_quality`, `engine`, `pack` and `calibration`, but those are not part of the
+  advertised contract: a model cannot supply them, and the harness validates
+  arguments against `input_model`, so they are unreachable from a run. Which horizon
+  is being assessed is therefore a property of the data, not a separate argument --
+  the horizon named in `projected_state`, or `NOW` when the caller passed none --
+  and a run that assessed all four horizons shows it as four `assess_risk` calls
+  carrying four different projections, never as one call with a horizon list.
+  (This page used to list the four keyword-only arguments as if they were contract
+  fields; the doc mirrors what is advertised, so the correction is recorded here
+  rather than papered over.)
 * **Output:** `RiskResult` (`trailguard/schemas/risk.py`) -- `risk_level`,
   `risk_score`, `drivers`, `hard_rules_triggered`, `confidence`, `evidence_refs`,
   `safety_margins`, `horizon`, `computed_at`
@@ -161,13 +193,18 @@ acquires and normalises a reading.
   * must not override or downgrade a triggered hard rule
   * must not return an accident probability; the concept is a Projected Risk State
 * **Two honest states rather than two defaults:**
-  * `weather_state=None` legalises a *missing* weather reading. Every weather feature
-    becomes not-computable, rule R-C is disclosed as not evaluated at this horizon, and
-    confidence drops accordingly. It is never silently skipped and never substituted
-    with a default.
   * `projected_state=None` legalises a caller that declined to project (the NOW
     horizon). The projection-derived margins -- projected battery, projection
     confidence, time margin -- are then reported as unknown rather than invented.
+  * A *missing weather reading* has the same shape only for a **direct Python
+    caller**, not for an agent run: `assess_risk()`'s own Python signature accepts
+    ``weather_state=None``, and when one is passed every weather feature becomes
+    not-computable, rule R-C is disclosed as not evaluated, and confidence drops
+    accordingly. It is never silently skipped and never substituted with a default.
+    A *model* cannot reach that state, because the contract it is validated against
+    marks `weather_state` required -- so a run whose weather call failed reaches the
+    core with no weather at all only by declining to call `assess_risk`, which the
+    trace records as an absent verdict rather than as a run with a hole in it.
 * **Confidence is an engineering statement, not a probability** (spec 10.3, 10.4): it
   describes the trustworthiness of the *inputs* -- route data quality, device data
   quality, weather age and snapshot quality, projection reliability, and the caller's

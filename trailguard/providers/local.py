@@ -64,7 +64,7 @@ class LocalModelProvider(ModelProvider):
       results are recorded, never assumed (spec 3.2).
 
     Raises:
-        NotImplementedError: Always, in Phase 0.
+        NotImplementedError: Always, until Phase 4.
     """
 
     def __init__(self, model: str | None = None, base_url: str | None = None) -> None:
@@ -93,7 +93,7 @@ class LocalModelProvider(ModelProvider):
         temperature: float = 0.0,
         max_tokens: int = 2048,
     ) -> ModelResponse:
-        """Not implemented in Phase 0.
+        """Not implemented until Phase 4.
 
         Args:
             messages: Transcript to send, starting with the harness system prompt.
@@ -102,7 +102,8 @@ class LocalModelProvider(ModelProvider):
             max_tokens: Output cap fixed by the harness (spec 3.1).
 
         Raises:
-            NotImplementedError: Always -- Phase 4 serves the local 4B-8B model.
+            NotImplementedError: Always, until Phase 4 -- which serves the local
+                4B-8B model on DGX Spark and is the phase that owns it.
         """
         raise NotImplementedError(
             "Phase 4: local 4B-8B open-source model served on DGX Spark"

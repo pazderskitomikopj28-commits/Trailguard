@@ -233,6 +233,31 @@ class EvidenceTrace(BaseModel):
     risk_drivers: list[RuleDriver] = Field(default=[], description="Risk drivers reported by the agent.")
     final_risk_level: RiskLevel | None = Field(default=None, description="Final risk level claimed by the agent.")
     confidence: float | None = Field(default=None, description="Final confidence claimed by the agent.")
+    core_risk_level: RiskLevel | None = Field(
+        default=None,
+        description=(
+            "Highest risk level the deterministic safety core actually returned during this run, "
+            "copied verbatim from the assess_risk results the model itself requested. This is what the "
+            "tools produced; final_risk_level is what the agent claimed. A None here means no risk "
+            "assessment was run, which is itself evidence."
+        ),
+    )
+    core_confidence: float | None = Field(
+        default=None,
+        description=(
+            "Confidence the deterministic safety core attached to core_risk_level. None when no "
+            "assessment was run, or when the core could not compute one."
+        ),
+    )
+    skill_sha256: str | None = Field(
+        default=None,
+        description=(
+            "SHA-256 of the exact SKILL.md text injected into the system prompt (None in the "
+            "baseline condition). Byte-level identity, so a benchmark row can be tied to the "
+            "protocol version that produced it -- and so a silently edited skill cannot pass as "
+            "the same one."
+        ),
+    )
     missing_data: list[str] = Field(default=[], description="Field dot-paths the agent reported as missing.")
     uncertainty_disclosed: bool = Field(
         default=False, description="Whether the agent explicitly disclosed uncertainty or missing data."

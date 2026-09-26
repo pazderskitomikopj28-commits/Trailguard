@@ -37,7 +37,102 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-__all__ = ["ChatMessage", "ModelProvider", "ModelResponse", "ToolCallRequest"]
+__all__ = [
+    "ChatMessage",
+    "ModelProvider",
+    "ModelResponse",
+    "ProviderAuthenticationError",
+    "ProviderError",
+    "ProviderRateLimited",
+    "ProviderResponseError",
+    "ProviderServerError",
+    "ProviderTimeout",
+    "ProviderUnavailable",
+    "ToolCallRequest",
+]
+
+
+class ProviderError(Exception):
+    """Base class of every transport failure a :class:`ModelProvider` reports.
+
+    Why a hierarchy at all: a provider failure is data, not noise. The evidence
+    trace records *that* a run failed, and the eval layer needs to tell "the
+    model never answered" apart from "the endpoint was down", "the credential
+    was rejected" and "the response could not be parsed". One bare
+    ``Exception`` would collapse all four into ``provider_error`` and a flaky
+    endpoint would look identical to a broken client (spec 15, 18).
+
+    The classes are declared here, next to the interface they serve, so a
+    Phase 4 :class:`~trailguard.providers.local.LocalModelProvider` maps its own
+    transport failures onto the same vocabulary instead of inventing a parallel
+    one. Nothing here carries a credential: the messages name the *kind* of
+    failure and the endpoint, never the key.
+
+    ``retryable`` is the one bit of policy on the hierarchy, and it is data
+    rather than behaviour: a provider decides *whether* to retry from the class
+    of the failure instead of pattern-matching a message, so "retry a 429, never
+    a 401" is one readable predicate instead of four string comparisons.
+    """
+
+    #: Whether an identical immediate retry could plausibly succeed. False by
+    #: default: a deterministic refusal (bad request, rejected credential,
+    #: unusable payload) is not fixed by trying again (spec 12).
+    retryable: bool = False
+
+
+class ProviderUnavailable(ProviderError):
+    """The endpoint could not be reached at all (DNS, connection).
+
+    Raised for a connect failure as well as for an endpoint that answered 5xx:
+    in both cases there is no answer to reason over, and answering with a guess
+    would be a fabricated model turn.
+    """
+
+    retryable = True
+
+
+class ProviderTimeout(ProviderUnavailable):
+    """A connect or read timeout expired before the endpoint answered."""
+
+    retryable = True
+
+
+class ProviderAuthenticationError(ProviderError):
+    """The endpoint rejected the credential (HTTP 401/403).
+
+    Deliberately *not* a subclass of :class:`ProviderUnavailable`: this failure
+    is deterministic, so no amount of retrying fixes it, and the message must
+    never include the credential that was rejected.
+    """
+
+
+class ProviderRateLimited(ProviderError):
+    """The endpoint throttled the caller (HTTP 429)."""
+
+    retryable = True
+
+
+class ProviderResponseError(ProviderError):
+    """The endpoint answered, but the answer is unusable.
+
+    Covers a non-2xx status, a body that is not the expected shape, and a
+    payload that fails validation -- the distinction that matters is "there was
+    an answer, and the answer was wrong", as opposed to "there was no answer".
+    Not retryable: an answer that is wrong is not made right by asking again.
+    """
+
+    retryable = False
+
+
+class ProviderServerError(ProviderResponseError):
+    """The endpoint answered with a 5xx, i.e. it failed on its side (HTTP 5xx).
+
+    Distinct from :class:`ProviderResponseError` because a server-side failure
+    is the one "unusable answer" that an immediate retry can plausibly fix,
+    which is what spec 12's single-retry budget is for.
+    """
+
+    retryable = True
 
 
 class ToolCallRequest(BaseModel):
@@ -161,6 +256,12 @@ class ModelProvider(ABC):
             A :class:`ModelResponse` carrying either text content or tool calls.
 
         Raises:
-            NotImplementedError: In Phase 0, for every concrete provider.
+            NotImplementedError: When a backend has not been wired for its phase
+                yet (Phase 0: both; Phase 4: the local one).
+            ProviderError: On any transport failure, with a subclass that names
+                the kind. A provider must never swallow a failure and return a
+                synthesised turn: the harness stops the run with
+                ``provider_error`` so the trace records that no answer exists,
+                rather than recording an answer nobody produced.
         """
         raise NotImplementedError

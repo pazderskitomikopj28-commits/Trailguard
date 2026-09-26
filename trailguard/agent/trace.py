@@ -74,6 +74,12 @@ class TraceCollector:
     final_risk_level: RiskLevel | None = None
     confidence: float | None = None
     uncertainty_disclosed: bool = False
+    #: Per-horizon verdicts the deterministic core returned, in the order the
+    #: agent asked for them. Kept as a list so the aggregate below is a
+    #: documented selection over real values rather than a running guess.
+    core_verdicts: list[tuple[Horizon, RiskLevel, float | None]] = field(default_factory=list)
+    skill_version: str | None = None
+    skill_sha256: str | None = None
     started_at: datetime = field(default_factory=_now)
     finished_at: datetime | None = None
 
@@ -207,6 +213,57 @@ class TraceCollector:
         self.confidence = confidence
         self.uncertainty_disclosed = uncertainty_disclosed
 
+    # ------------------------------------------------------------------ core
+
+    def record_core_verdict(
+        self,
+        horizon: Horizon,
+        risk_level: RiskLevel,
+        confidence: float | None,
+    ) -> None:
+        """Record one verdict the deterministic core actually produced.
+
+        Responsibility: keep what the *tools* returned separate from what the
+        agent claimed, so a benchmark can measure the gap between them (spec 18).
+        Not responsible for: choosing which horizon the agent should have
+        assessed, or re-deriving a level -- every value here is copied verbatim
+        out of an :class:`~trailguard.schemas.risk.RiskResult` the model's own
+        ``assess_risk`` call returned.
+
+        Which horizons are recorded is entirely the model's doing: a run that
+        never called ``assess_risk`` records nothing here, and ``core_risk_level``
+        stays ``None``. That is an honest "no assessment happened", not a missing
+        field to be filled in.
+        """
+        self.core_verdicts.append((horizon, risk_level, confidence))
+
+    def worst_core_verdict(self) -> tuple[RiskLevel, float | None] | None:
+        """Return the worst verdict the core produced, and its confidence.
+
+        A projected-risk-state answer is only as safe as its worst horizon, so
+        the trace's headline ``core_risk_level`` is the highest severity rank
+        among the horizons the agent actually assessed -- using the frozen
+        :attr:`~trailguard.schemas.risk.RiskLevel.rank` order, never a
+        locally-invented severity ladder. Ties keep the first-seen order, and the
+        reported confidence is the one attached to that same verdict, so the two
+        numbers always describe one assessment rather than a blend.
+
+        This is a *selection* among values the deterministic core already
+        produced, not a risk computation: no threshold, rule or score is applied
+        here, and nothing may lower a level.
+        """
+        if not self.core_verdicts:
+            return None
+        # ``max`` returns the FIRST maximal element, which is what makes the
+        # first-seen tie-break above true by construction. A stable ``sorted(...)[-1]``
+        # would also order by rank -- and silently resolve a tie to the LAST horizon,
+        # so the docstring and the code would disagree about which assessment the
+        # reported confidence belongs to. Written as ``max`` so the tie behaviour is
+        # the documented one rather than an accident of list indexing.
+        horizon, level, confidence = max(self.core_verdicts, key=lambda verdict: verdict[1].rank)
+        del horizon
+        return level, confidence
+
     # ----------------------------------------------------------------- output
 
     def freshness_log(self) -> list[str]:
@@ -242,23 +299,27 @@ class TraceCollector:
         recorded checks, ``weather_freshness_min`` is the age of the *freshest*
         weather actually used, and ``freshness_checks`` is the readable log of
         the same checks. ``weather_source`` is passed through exactly as
-        :meth:`record_weather_source` stored it.
+        :meth:`record_weather_source` stored it. ``core_risk_level`` /
+        ``core_confidence`` come from :meth:`worst_core_verdict`, i.e. from the
+        core's own output -- never from the agent's prose.
         """
         ages = [
             check.weather_freshness_min
             for check in self.horizon_checks
             if check.weather_freshness_min is not None
         ]
+        worst = self.worst_core_verdict()
         trace = EvidenceTrace(
             run_id=self.run_id,
             scenario_id=self.scenario_id,
             model_name=self.model_name,
             provider=self.provider,
             skill_loaded=self.skill_loaded,
-            # Left as None on purpose: reading a version out of SKILL.md would
-            # mean parsing the skill text on the Python side, which the skill
-            # loader deliberately does not do (spec 3.1, 15).
-            skill_version=None,
+            # Provenance only: the version the skill's own frontmatter declares,
+            # read by trailguard.agent.skill_loader.skill_identity(). No protocol
+            # content is read out of the skill text (spec 3.1, 15).
+            skill_version=self.skill_version,
+            skill_sha256=self.skill_sha256,
             started_at=self.started_at,
             finished_at=finished_at,
             tool_calls=list(self.tool_calls),
@@ -271,6 +332,8 @@ class TraceCollector:
             risk_drivers=list(self.risk_drivers),
             final_risk_level=self.final_risk_level,
             confidence=self.confidence,
+            core_risk_level=worst[0] if worst else None,
+            core_confidence=worst[1] if worst else None,
             missing_data=list(self.missing_data),
             uncertainty_disclosed=self.uncertainty_disclosed,
             sampling_params=dict(self.sampling_params),

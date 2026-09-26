@@ -34,6 +34,11 @@ checkpoints/
 outputs/
 data/private/
 
+# Live run artifacts (evidence traces from scripts/test_stepfun_agent.py).
+# A trace can quote a model answer, and a directory that grows with every live
+# run has no business in version control (spec 13, 24).
+runs/
+
 # OS
 .DS_Store
 Thumbs.db

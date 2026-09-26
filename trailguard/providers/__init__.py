@@ -6,13 +6,31 @@ One import surface for every layer::
 
 Phase 0 exports the transport contracts and the two concrete backends of the
 frozen evaluation matrix (spec 14.2): Step 5 Preview and a local 4B-8B
-open-source model on DGX Spark. Both raise :class:`NotImplementedError` inside
-:meth:`~trailguard.providers.base.ModelProvider.generate` -- the network client
-is Phase 3 (StepFun) / Phase 4 (local). Neither provider executes tools, owns
-tool schemas, or contains any safety logic.
+open-source model on DGX Spark. Phase 3 wires the StepFun transport on top of
+the OpenAI-compatible chat-completions API (the SDK is imported lazily, so
+importing this package still needs nothing beyond the base install); the local
+backend still raises :class:`NotImplementedError` until Phase 4. Neither
+provider executes tools, owns tool schemas, or contains any safety logic.
+
+The failure vocabulary is exported alongside the contracts, so a caller that
+catches a transport failure branches on one hierarchy instead of on two::
+
+    from trailguard.providers import ProviderError, ProviderTimeout
 """
 
-from .base import ChatMessage, ModelProvider, ModelResponse, ToolCallRequest
+from .base import (
+    ChatMessage,
+    ModelProvider,
+    ModelResponse,
+    ProviderAuthenticationError,
+    ProviderError,
+    ProviderRateLimited,
+    ProviderResponseError,
+    ProviderServerError,
+    ProviderTimeout,
+    ProviderUnavailable,
+    ToolCallRequest,
+)
 from .local import LocalModelProvider
 from .stepfun import StepFunProvider
 
@@ -21,6 +39,13 @@ __all__ = [
     "LocalModelProvider",
     "ModelProvider",
     "ModelResponse",
+    "ProviderAuthenticationError",
+    "ProviderError",
+    "ProviderRateLimited",
+    "ProviderResponseError",
+    "ProviderServerError",
+    "ProviderTimeout",
+    "ProviderUnavailable",
     "StepFunProvider",
     "ToolCallRequest",
 ]

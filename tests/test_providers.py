@@ -10,7 +10,9 @@ branch on which backend is loaded.
 Explicit non-responsibility: these tests never construct a client, never open a
 socket and never read ``.env`` -- configuration comes from ``os.environ`` at
 construction time, which is exactly what spec 16 mandates, and the read is done
-through pytest's ``monkeypatch`` rather than by touching a tracked file.
+through pytest's ``monkeypatch`` rather than by touching a tracked file. The
+transport itself (wire translation, status mapping, the retry budget) is covered
+in ``tests/test_stepfun_provider.py`` over ``httpx.MockTransport``.
 """
 
 from __future__ import annotations
@@ -20,7 +22,19 @@ from typing import Any
 
 import pytest
 
-from trailguard.providers.base import ChatMessage, ModelProvider, ModelResponse, ToolCallRequest
+from trailguard.providers.base import (
+    ChatMessage,
+    ModelProvider,
+    ModelResponse,
+    ProviderAuthenticationError,
+    ProviderError,
+    ProviderRateLimited,
+    ProviderResponseError,
+    ProviderServerError,
+    ProviderTimeout,
+    ProviderUnavailable,
+    ToolCallRequest,
+)
 from trailguard.providers.local import LocalModelProvider
 from trailguard.providers.stepfun import StepFunProvider
 
@@ -191,11 +205,18 @@ def _provider_code_names(module_name: str) -> set[str]:
     return names
 
 
-def test_no_provider_imports_a_network_client_in_phase_zero() -> None:
-    """Importing a provider must not require an SDK or open a socket."""
+def test_no_provider_binds_a_network_client_at_import_time() -> None:
+    """Importing a provider must not require an SDK or open a socket.
+
+    Phase 3 wires the StepFun transport, but the wiring is still lazy: ``openai``
+    is imported inside the call that needs it, so the module attribute is never
+    bound and a credential-free interpreter can import the provider.
+    """
     for module_name in PROVIDER_MODULES:
         module = importlib.import_module(module_name)
-        assert not hasattr(module, "openai"), f"{module_name} must not bind a client in Phase 0"
+        assert not hasattr(module, "openai"), (
+            f"{module_name} binds a client at import time; the SDK import must stay inside _client()"
+        )
 
 
 def test_no_provider_reads_a_configuration_file() -> None:
@@ -218,23 +239,58 @@ def test_no_provider_reads_a_configuration_file() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# generate: Phase 0 raises, naming the phase that owns the transport
+# generate: the local backend still defers to its phase (spec 16)
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize(
-    ("provider", "phase"),
-    [
-        (StepFunProvider(model="m", base_url="u"), "Phase 3"),
-        (LocalModelProvider(model="m", base_url="u"), "Phase 4"),
-    ],
-)
-def test_generate_defers_to_its_own_phase(provider: ModelProvider, phase: str) -> None:
-    """Each backend names the phase that wires it, so no call silently no-ops."""
+def test_the_local_provider_defers_to_phase_four() -> None:
+    """The local backend names the phase that wires it, so no call silently no-ops."""
+    provider = LocalModelProvider(model="m", base_url="u")
+
     with pytest.raises(NotImplementedError) as excinfo:
         provider.generate(TRANSCRIPT, tools=None, temperature=0.0, max_tokens=2048)
 
-    assert phase in str(excinfo.value)
+    assert "Phase 4" in str(excinfo.value)
+
+
+def test_stepfun_generate_is_wired_for_phase_three(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Step 5 Preview no longer raises NotImplementedError: Phase 3 owns it now.
+
+    What is asserted here is only that the transport is *live* and reaches its
+    own failure path -- a missing credential -- rather than deferring to a phase
+    that has arrived. The credential is never set, and the raised message must
+    not contain one.
+    """
+    monkeypatch.delenv("STEPFUN_API_KEY", raising=False)
+    provider = StepFunProvider(model="step-5-preview", base_url="https://stepfun.invalid")
+
+    with pytest.raises(ProviderAuthenticationError) as excinfo:
+        provider.generate(TRANSCRIPT, tools=None, temperature=0.0, max_tokens=2048)
+
+    assert "STEPFUN_API_KEY" in str(excinfo.value)
+    assert FAKE_CREDENTIAL not in str(excinfo.value)
+
+
+def test_the_failure_taxonomy_separates_a_failed_endpoint_from_a_refusal() -> None:
+    """A transport failure is data: the retry decision must be readable, not guessed.
+
+    ``retryable`` is the one piece of policy on the hierarchy. Getting it wrong
+    in either direction is expensive -- retrying a 401 burns the budget on a
+    deterministic refusal, while not retrying a 429 throws away an answer the
+    endpoint was willing to give one second later (spec 12).
+    """
+    retryable = {ProviderTimeout, ProviderUnavailable, ProviderRateLimited, ProviderServerError}
+    deterministic = {ProviderAuthenticationError, ProviderResponseError}
+
+    assert retryable.isdisjoint(deterministic)
+    for failure in retryable:
+        assert failure.retryable is True, f"{failure.__name__} must be retried once"
+    for failure in deterministic:
+        assert failure.retryable is False, f"{failure.__name__} must never be retried"
+
+    assert issubclass(ProviderTimeout, ProviderUnavailable), "a timeout is an unreachable endpoint"
+    assert issubclass(ProviderServerError, ProviderResponseError), "a 5xx is an unusable answer"
+    assert all(issubclass(failure, ProviderError) for failure in retryable | deterministic)
 
 
 def test_both_providers_accept_the_identical_call_signature() -> None:

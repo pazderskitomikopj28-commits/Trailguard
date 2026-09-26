@@ -1,16 +1,22 @@
 # TrailGuard Architecture
 
-**Status: Phase 1 (deterministic core).** The factual chain is real and runs end to
-end: geodesic GPX route geometry, route projection, the frozen movement model, replay
-weather, and the rule-driven safety core that produces level, score, drivers, margins
-and confidence. Still absent by design: live weather (Phase 2), the Skill's horizon
-loop in the harness (Phase 2), providers (Phase 3), the DGX Spark benchmark (Phase 5)
-and the demo (Phase 6). This document explains how the layers fit together, which file
-owns what, and what is deliberately left to later phases.
+**Status: Phase 3 (agent skill runtime + tool orchestration).** The chain is real and
+runs end to end: geodesic GPX route geometry, route projection, the frozen movement
+model, route-aware weather with a live acquisition path, the rule-driven safety core
+that produces level, score, drivers, margins and confidence -- and, on top of that, a
+single agent harness that lets a real model call those tools and records what it did
+into an evidence trace. Both conditions of the single-variable experiment now run
+through the same `run_agent()`, over a real provider or over the offline scripted
+stub. Still absent by design: the DGX Spark local model (Phase 4), the benchmark
+aggregation and honesty metrics (Phase 5) and the demo (Phase 6). This document
+explains how the layers fit together, which file owns what, and what is deliberately
+left to later phases.
 
 Spec references below point to the single source of truth:
-`TrailGuard_比赛版开发冻结规格_v2.1.md`. How the Phase 1 numbers are produced is
-documented in [`deterministic_core.md`](deterministic_core.md).
+`TrailGuard_比赛版开发冻结规格_v2.1.md`. How the numbers are produced is
+documented in [`deterministic_core.md`](deterministic_core.md); how the agent runtime
+records a run, and what it refuses to infer, in
+[`agent_runtime.md`](agent_runtime.md).
 
 ---
 
@@ -74,8 +80,8 @@ dgx-spark-hackathon/
 ├── SKILL.md                          Skill v1: reasoning protocol, no code (spec 10)
 ├── pyproject.toml / requirements.txt / .env.example
 ├── docs/                             architecture, contracts, route-aware weather,
-│                                    deterministic core, evaluation protocol,
-│                                    phase0/phase1/phase2 final reports
+│                                    deterministic core, evaluation protocol, agent
+│                                    runtime, phase0/1/2/3 final reports
 │
 ├── trailguard/
 │   ├── schemas/                      frozen contracts; the ONE shared context
@@ -120,14 +126,17 @@ dgx-spark-hackathon/
 │   ├── smoke.py                      `python -m trailguard.smoke`: the chain, printed
 │   ├── weather_smoke.py              `python -m trailguard.weather_smoke`: route-aware
 │   │                                weather over four horizons, printed (Phase 2)
+│   ├── agent_smoke.py                `python -m trailguard.agent_smoke`: the whole runtime,
+│   │                                both conditions, no key and no network (Phase 3)
 │   ├── agent/                        TrailGuard's own runtime (spec 15)
 │   │   ├── harness.py                run_agent(): system prompt -> tool loop -> trace
+│   │   ├── replay_runner.py          a Scenario -> run_agent() per condition -> runs/phase3/
 │   │   ├── skill_loader.py           load_skill_md(): raw text, never parsed
 │   │   └── trace.py                  TraceCollector -> EvidenceTrace
-│   └── providers/                    model transport (spec 16)
-│       ├── base.py                   ChatMessage, ToolCallRequest, ModelResponse, ModelProvider
-│       ├── stepfun.py                StepFunProvider (Step 5 Preview)   (Phase 3)
-│       └── local.py                  LocalModelProvider (DGX Spark)     (Phase 4)
+│   ├── providers/                    model transport (spec 16)
+│   │   ├── base.py                   ChatMessage, ToolCallRequest, ModelResponse, ModelProvider
+│   │   ├── stepfun.py                StepFunProvider (Step 5 Preview)   (Phase 3, real)
+│   │   └── local.py                  LocalModelProvider (DGX Spark)     (Phase 4 stub)
 │
 ├── evals/                            benchmark layer (schema only in Phase 0)
 │   ├── metrics.py                    frozen metric names + MetricResult
@@ -146,10 +155,13 @@ dgx-spark-hackathon/
 │       (spec 24 also reserves replay/timelines/; it is NOT created, because the v1
 │        movement/device timelines live inline in each scenario YAML -- see
 │        replay/README.md section 1)
-├── scripts/                          test_live_weather.py -- the only path that may open a
-│                                     socket; never collected by pytest (spec 13, 14)
+├── runs/phase3/                      live evidence traces -- GIT-IGNORED, never committed
+├── scripts/                          test_live_weather.py and test_stepfun_agent.py -- the
+│                                     only paths that may open a socket; never collected by
+│                                     pytest (spec 13, 14)
 ├── demo/                             Streamlit demo -- NOT created yet (Phase 6)
-├── tests/                            Layer A safety-core + contract / fairness / packaging tests
+├── tests/                            Layer A safety-core + contract / fairness / packaging /
+│                                     agent-runtime tests (pytest is offline by construction)
 └── app/                              legacy empty scaffolding -- untouched, not imported
 ```
 
@@ -177,8 +189,13 @@ baseline prompt is the base text with nothing else added.
 
 **Harness <-> Tools.** The harness advertises `tool_schema_dicts()` (five entries, in
 registry order), executes whatever the model asks for inside `try/except`, and records
-the outcome (`ok` / `error` / `not_implemented`) in the evidence trace. It does not
-retry, repair or substitute calls, and it does not decide which tools a task required.
+the outcome in the evidence trace -- one of `ok`, `invalid_tool_call`, `unknown_tool`,
+`tool_error` or `not_implemented`, so a hallucinated tool call is distinguishable from
+a broken endpoint. It does not retry, repair or substitute calls, does not decide which
+tools a task required, does not echo the model's input back as the tool's output, and
+does not write the model's final answer for it. A failed call is recorded and handed
+back to the model, which is free to correct itself; `stop_reason` then distinguishes
+`completed`, `max_steps`, `provider_error`, `tool_error` and `invalid_tool_call`.
 
 **Tools <-> Safety Core.** Four tools deliver facts (`route context`, `projection`,
 `weather`, `device state`); the fifth, `assess_risk`, delegates to the safety core in
@@ -203,7 +220,23 @@ is what keeps the `2 models x 2 skill conditions` matrix fair (spec 14.2).
 **Everything <-> Trace.** `TraceCollector` is the only writer of `EvidenceTrace`
 (spec 18): tool calls with redacted arguments, horizons checked, freshness checks,
 triggered rules, drivers, final level, confidence, missing data, uncertainty flag,
-sampling params. The benchmark computes numbers from the trace; the demo displays it.
+sampling params, skill identity (version + SHA-256 of the text actually injected) and
+the stop reason. It records what a tool *returned*; it does not read a verdict out of
+the model's prose, which is why `core_risk_level` / `core_confidence` come from the
+tools and `final_risk_level` / `confidence` are left for the Phase 5 evaluator to fill.
+The benchmark computes numbers from the trace; the demo displays it.
+
+**Scenario <-> Replay <-> Driver.** A `Scenario` carries the fixed route, weather
+snapshot and movement/device timelines of Replay Mode (spec 17), so a run is
+reproducible and a no-skill / with-skill pair is a controlled comparison.
+`trailguard/agent/replay_runner.py` loads a scenario, hands `run_agent()` a registry
+built by `scenario_registry()` -- the canonical tools with the scenario's own declared
+weather policy bound in via the tool's documented DI seam -- and writes one trace per
+(scenario, condition) to `runs/phase3/`. The driver calls no tool itself and scores no
+run: a driver that called tools would hand the baseline a plan, and a driver that
+graded results would put the evaluator inside the thing being evaluated. Structural
+facts about an answer (length, which horizon labels appear, whether the banned phrase
+appears) are reported as facts; the judgement is Phase 5's.
 
 **Replay <-> Benchmark <-> Demo.** Replay Mode (spec 17) fixes the GPX route, the
 weather snapshot and the movement/device timelines inside a `Scenario`, so a run is
@@ -215,34 +248,41 @@ reproducible and a no-skill / with-skill pair is a controlled comparison. The de
 Phase 0 shipped contracts, the YAML rule pack (with its real loader), the harness loop,
 the skill text, the metric vocabulary and the docs. Phase 1 added the arithmetic that
 turns those contracts into numbers; Phase 2 gave the last tool body a real weather
-acquisition path. The split below is what is already running versus what a later phase
-owns.
+acquisition path; Phase 3 put a real model in the loop and made the two conditions run
+through one harness. The split below is what is already running versus what a later
+phase owns.
 
-| Area | Phase 1 (done) | Phase 2 (done) | Later |
-| --- | --- | --- | --- |
-| Schemas | unchanged from Phase 0; still frozen, `extra="forbid"` | one additive field, `WeatherForRouteTime.confidence_is_assumed` | additive changes only, spec amendment first |
-| Route geometry | `routes/geometry.py`: geodesic metres, planar nearest-point, elevation from the GPX itself | -- | a persistence model for "no longer on this route" |
-| Tools | real bodies for route context, projection, device state and `assess_risk` | real body for `get_weather_for_route_time`, replay + live | the horizon loop stays in the Skill (Phase 3), never in a tool |
-| Safety core | declarative rule evaluation, ETA, sunset margin, soft score, hard-rule floor, R-F escalation, confidence | unchanged; it consumes a `WeatherForRouteTime` and cannot tell which provider produced it | re-tuning is data-only; no new rules in the MVP |
-| Rule pack | `rules_v1.yaml` unchanged in Phase 1; `calibration_v1.yaml` added for evaluation metadata | unchanged | re-tuning is data-only |
-| Replay | device feeds and the open-meteo-shaped weather snapshot are read by real loaders | the same normaliser serves live responses; a second, clearly-marked synthetic fixture for the future-hazard demo | live weather; scenario dataset growth (Phase 3+) |
-| Weather acquisition | -- | `weather/`: provider ABC, shared normalisation, replay provider, live Open-Meteo provider with finite timeouts and one retry | other providers are opt-in, never a silent substitution |
-| Agent harness | unchanged from Phase 0 | unchanged; it still records a provider failure as an error, not as "not implemented" | Phase 3 providers wired; Phase 5 semantic trace fields |
-| Skill | `SKILL.md` v1 protocol text | unchanged (spec 21) | revisions stay protocol-level, never implementation-level |
-| Evals | metric names, `MetricResult`, `EvalRunResult`, `ComparisonReport`, fairness preconditions | unchanged | Phase 5 aggregation, DGX Spark evidence |
-| Demo | -- | -- | Phase 6 Streamlit |
+| Area | Phase 1 (done) | Phase 2 (done) | Phase 3 (done) | Later |
+| --- | --- | --- | --- | --- |
+| Schemas | unchanged from Phase 0; still frozen, `extra="forbid"` | one additive field, `WeatherForRouteTime.confidence_is_assumed` | three additive fields on `EvidenceTrace` — `core_risk_level`, `core_confidence`, `skill_sha256` — each with a default, so every existing trace still validates; the frozen `AssessRiskInput` / tool contracts gained nothing | additive changes only, spec amendment first |
+| Route geometry | `routes/geometry.py`: geodesic metres, planar nearest-point, elevation from the GPX itself | -- | -- | a persistence model for "no longer on this route" |
+| Tools | real bodies for route context, projection, device state and `assess_risk` | real body for `get_weather_for_route_time`, replay + live | unchanged: the five stay atomic, and no one-shot horizon tool was added | the horizon loop stays in the Skill, never in a tool |
+| Safety core | declarative rule evaluation, ETA, sunset margin, soft score, hard-rule floor, R-F escalation, confidence | unchanged; it consumes a `WeatherForRouteTime` and cannot tell which provider produced it | unchanged; still no LLM, no key, no network in replay mode | re-tuning is data-only; no new rules in the MVP |
+| Rule pack | `rules_v1.yaml` unchanged in Phase 1; `calibration_v1.yaml` added for evaluation metadata | unchanged | unchanged byte for byte | re-tuning is data-only |
+| Replay | device feeds and the open-meteo-shaped weather snapshot are read by real loaders | the same normaliser serves live responses; a second, clearly-marked synthetic fixture for the future-hazard demo | a scenario's declared weather policy is bound at the registry level, so a replayed run reaches its own snapshot | scenario dataset growth |
+| Weather acquisition | -- | `weather/`: provider ABC, shared normalisation, replay provider, live Open-Meteo provider with finite timeouts and one retry | unchanged | other providers are opt-in, never a silent substitution |
+| Agent harness | unchanged from Phase 0 | unchanged; it still records a provider failure as an error, not as "not implemented" | `run_agent()` with a real provider, five tool outcomes, five stop reasons, `scenario_registry()`, `replay_runner` | Phase 5 semantic trace fields |
+| Skill | `SKILL.md` v1 protocol text | unchanged (spec 21) | unchanged **byte for byte**; only read as raw text, hashed for provenance | revisions stay protocol-level, never implementation-level |
+| Model providers | -- | -- | `providers/`: ABC, typed failure taxonomy, `StepFunProvider` with one documented retry and secrets masked | `LocalModelProvider` on DGX Spark (Phase 4) |
+| Offline proof | `python -m trailguard.smoke` | `python -m trailguard.weather_smoke` | `python -m trailguard.agent_smoke`: the whole runtime, both conditions, no key, no network | -- |
+| Evals | metric names, `MetricResult`, `EvalRunResult`, `ComparisonReport`, fairness preconditions | unchanged | fairness preconditions unchanged and still enforced | Phase 5 aggregation, DGX Spark evidence |
+| Demo | -- | -- | -- | Phase 6 Streamlit |
 
 Phase 1 deliberately did **not** touch the harness, the skill text or the rule pack's
 thresholds -- `rules_v1.yaml` is byte-identical to its Phase 0 version, and every
 threshold change lives in the new `calibration_v1.yaml`. Phase 2 did not touch them
-either: `SKILL.md`, `rules_v1.yaml` and the Phase 0 weather fixture are all unchanged,
-and the only schema change is an additive field with a default.
+either. Phase 3 did not touch them either: `SKILL.md`, `rules_v1.yaml` and the Phase 0
+weather fixture are all unchanged, the frozen tool contracts gained no field, and the
+two gaps that replayed runs exposed are recorded as findings rather than worked around
+by widening a contract a phase did not own (see [`agent_runtime.md` §9](agent_runtime.md)).
 
 Forbidden in Phase 1 by spec 26: UI polish, wearables, mobile, databases, dozens of
 rules, trained models, multi-agent designs, and calling a language model to compute
 risk. Phase 2 adds to that (spec 23): no agent harness execution, no tool-calling
 agent, no benchmark, no map UI, and no integration with the local Qwen model -- the
-DGX Spark service and the Phase 2 code stay isolated.
+DGX Spark service and the Phase 2 code stay isolated. Phase 3 adds its own (spec 15,
+16): no separate baseline harness behind a second code path, no second skill variant,
+no parsing of the skill text, no tool-call echo as a tool result, and no Qwen wiring.
 
 ## 7. Boundaries worth restating
 
@@ -260,15 +300,21 @@ DGX Spark service and the Phase 2 code stay isolated.
   `review_status: pending` -- never an industry safety standard (spec 7).
 * No language model participates in the safety core. The chain from GPX to verdict runs
   with `STEPFUN_API_KEY` unset, and a test deletes the key variables to prove it (spec
-  20). `python -m trailguard.smoke` prints the whole chain for inspection, and
+  20). `python -m trailguard.smoke` prints the whole chain for inspection,
   `python -m trailguard.weather_smoke` prints the route-aware weather chain across four
-  horizons.
-* `python -m pytest` makes no external HTTP call. The live provider is exercised in the
+  horizons, and `python -m trailguard.agent_smoke` runs the whole agent runtime through
+  both conditions with no key and no network at all.
+* `python -m pytest` makes no external HTTP call. The live providers are exercised in the
   suite through `httpx.MockTransport` and the socket layer is closed by an autouse
   fixture, so the guarantee is structural rather than promised (spec 13). The only
-  path that may open a socket is `scripts/test_live_weather.py`, which pytest never
-  collects and which reports `LIVE WEATHER NETWORK UNAVAILABLE` instead of faking
-  success (spec 14).
+  paths that may open a socket are `scripts/test_live_weather.py` and
+  `scripts/test_stepfun_agent.py`, which pytest never collects
+  (`tests/conftest.py::collect_ignore`) and which report `LIVE WEATHER NETWORK
+  UNAVAILABLE` / `NOT RUN -- credential unavailable` instead of faking success
+  (spec 14, 17).
+* Live traces are evidence, not source. A run writes to `runs/phase3/`, which is in
+  `.gitignore`: a trace can quote a model answer, and a directory that grows with every
+  live run has no business in version control (spec 13, 24).
 * A live failure is never answered by a replay fixture. Every failure raises a
   subclass of `WeatherProviderError` naming what was attempted (spec 11, 17).
 * No CUDA, no GPU and no Numba anywhere in the repository (spec 24).

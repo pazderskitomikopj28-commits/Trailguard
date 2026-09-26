@@ -65,8 +65,13 @@ SCENARIO_FILES: list[Path] = sorted(SCENARIOS_DIR.rglob("*.yaml"))
 #: make no external HTTP call (spec 13), and a collected script that opens a socket
 #: would break that the moment somebody ran ``pytest scripts/``. Listed here as well
 #: as being outside ``testpaths``, so the exclusion does not depend on a configuration
-#: nobody reads.
-collect_ignore: list[str] = ["../scripts/test_live_weather.py"]
+#: nobody reads. The Phase 3 live agent script is excluded for the same reason, plus
+#: a credential-shaped path: a collected live driver would let a plain ``pytest``
+#: run reach a real model with the developer's own API key.
+collect_ignore: list[str] = [
+    "../scripts/test_live_weather.py",
+    "../scripts/test_stepfun_agent.py",
+]
 
 #: Frozen horizons (spec 6.1) in canonical order.
 HORIZON_VALUES: list[str] = [horizon.value for horizon in Horizon.all_horizons()]

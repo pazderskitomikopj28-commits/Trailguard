@@ -213,14 +213,21 @@ def check_design(report: Report) -> None:
         same,
         "byte-identical" if same else "the committed manifest no longer matches the tree",
     )
+    # Unscored warm-up records are allowed; a scored one is not, because the design
+    # is meant to be frozen before any result exists.
+    raw = REPO_ROOT / "runs" / "phase5" / "raw"
+    scored = []
+    if raw.is_dir():
+        for run_file in sorted(raw.glob("*.json")):
+            record = json.loads(run_file.read_text(encoding="utf-8"))
+            if record.get("scored") is not False:
+                scored.append(run_file.name)
     report.add(
-        "manifest records no result",
-        not (REPO_ROOT / "runs" / "phase5" / "raw").glob("*.json")
-        if (REPO_ROOT / "runs" / "phase5" / "raw").is_dir()
-        else True,
-        "runs/phase5/raw holds no run record" if not (
-            REPO_ROOT / "runs" / "phase5" / "raw"
-        ).is_dir() else "runs/phase5/raw already holds run records",
+        "no scored result exists yet",
+        not scored,
+        "runs/phase5/raw holds no scored run record"
+        if not scored
+        else f"scored run records already present: {scored[:3]}",
     )
 
     for entry in manifest["scenarios"]:
@@ -279,7 +286,6 @@ def check_sampling(report: Report) -> None:
     for name, expected in (
         ("temperature", TEMPERATURE),
         ("max_tokens", MAX_TOKENS),
-        ("max_steps", MAX_STEPS),
     ):
         actual = signature.parameters[name].default
         report.add(
@@ -287,6 +293,15 @@ def check_sampling(report: Report) -> None:
             actual == expected,
             f"default {actual}, pre-registered {expected}",
         )
+    # max_steps is the one parameter the benchmark sets away from the harness
+    # default, so it is checked against the manifest rather than the signature --
+    # and the manifest must carry the derivation, or the correction is unaccounted.
+    report.add(
+        "harness max_steps default is below the pre-registered budget",
+        signature.parameters["max_steps"].default < MAX_STEPS,
+        f"harness default {signature.parameters['max_steps'].default}, "
+        f"pre-registered budget {MAX_STEPS} (the protocol needs 13 tool calls)",
+    )
     report.add(
         "tool_failure_policy is the harness default",
         signature.parameters["tool_failure_policy"].default == TOOL_FAILURE_POLICY,

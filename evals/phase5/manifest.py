@@ -79,9 +79,30 @@ SKILL_SHA256 = "98fd007eb23aee18f98bf67c295d7bad3c8e48f7a722022c852218fb0c649769
 #: remains is therefore a real finding about the harness, not about determinism.
 TEMPERATURE = 0.0
 MAX_TOKENS = 2048
-MAX_STEPS = 12
 MAX_MODEL_LEN = 16384
 TOOL_FAILURE_POLICY = "report"
+
+#: Model-turn budget per run.
+#:
+#: PRE-REGISTRATION CORRECTION, made during the non-scored warm-up and before any
+#: scored run. This was first set to 12, the ``run_agent`` default. The warm-up
+#: showed 12 cannot fit the protocol: the frozen chain is
+#: get_route_context(1) + get_user_device_context(1) + project_route_state(3, NOW
+#: needs no projection) + get_weather_for_route_time(4, one per horizon) +
+#: assess_risk(4) = 13 tool calls, plus the recovery turn the model reliably needs
+#: after its first ``DeviceFeedError`` (a Phase 4 finding, reproduced here), plus
+#: the turn that writes the answer. Both warm-up conditions therefore hit
+#: ``max_steps`` with an empty final answer, which would have made M1, M4, M6, M9,
+#: M10, M11, M13 and M14 structurally unmeasurable and reduced the benchmark to
+#: measuring the budget instead of the skill.
+#:
+#: 16 is not a boost, it is the budget Phase 4 itself ran this chain under
+#: (``scripts/test_local_agent.py --max-steps`` defaults to 16) and validated by
+#: completing S01 in 15 turns. It is recorded here with that derivation so the
+#: choice is auditable rather than silent. If completion is still structurally
+#: impossible at 16, that is reported as a finding and the number is not moved
+#: again to buy a nicer result.
+MAX_STEPS = 16
 
 #: Repetitions. Three were recommended and three are pre-registered: with
 #: ``temperature`` at 0.0 the value is variance reduction across the provider's
@@ -236,6 +257,14 @@ def build_manifest(*, created_at: str | None = None) -> dict[str, Any]:
             "temperature": TEMPERATURE,
             "max_tokens": MAX_TOKENS,
             "max_steps": MAX_STEPS,
+            "max_steps_derivation": (
+                "13 tool calls the frozen protocol requires (route 1 + device 1 + projection 3 "
+                "+ weather 4 + assess 4), plus the DeviceFeedError recovery turn Phase 4 "
+                "documented and the warm-up reproduced, plus the answer turn. 16 is also the "
+                "budget scripts/test_local_agent.py runs under and Phase 4 completed S01 with. "
+                "First pre-registered at the run_agent default of 12, which the warm-up showed "
+                "cannot fit the protocol; corrected before any scored run."
+            ),
             "tool_failure_policy": TOOL_FAILURE_POLICY,
             "max_model_len": MAX_MODEL_LEN,
             "top_p": None,

@@ -334,13 +334,22 @@ METRICS: tuple[MetricDefinition, ...] = (
         direction="lower_is_better",
         unit="rate",
         definition=(
-            "A contradiction is a run whose claimed level or claimed rule set disagrees with what "
-            "trace.core_risk_level and the core verdicts recorded during the run actually said. The "
-            "core's own numbers are trace evidence, not a claim -- this metric compares two "
-            "recorded things, so it needs no manual review to establish *that* the disagreement "
-            "happened. Which side a human should believe is not this metric's question; the core is "
-            "frozen and its verdict is the one the skill protocol forbids the model from editing "
-            "(spec 10.5)."
+            "A contradiction is a run whose claimed verdict disagrees with what the tools "
+            "actually returned. Compared as MAXIMA, because that is the granularity the trace "
+            "has: ``trace.core_risk_level`` is the highest risk level the deterministic core "
+            "returned during the run, and ``trace.horizon_checks`` records freshness and missing "
+            "data per horizon, not a level. So the run's worst claimed level is measured against "
+            "the worst level the core returned. This is also the safety-relevant direction -- an "
+            "agent that reported the worst verdict somewhere has not contradicted the core "
+            "whatever it did with the calmer horizons. Both operands are recorded facts, so no "
+            "manual review is needed to establish THAT the disagreement happened; which side a "
+            "human should believe is a different question, and the core is frozen and its verdict "
+            "is the one the skill protocol forbids the model from editing (spec 10.5)."
+        ),
+        caveat=(
+            "Because the trace holds only the run-level maximum, this metric cannot tell a run "
+            "that contradicted one horizon from one that contradicted all of them. M6 and M13, "
+            "which are compared against the per-horizon reference, carry that detail."
         ),
         pairs="yes",
     ),
@@ -448,7 +457,8 @@ METRICS: tuple[MetricDefinition, ...] = (
         direction="lower_is_better",
         unit="rate",
         definition=(
-            "max_steps is a frozen sampling parameter of the experiment (the harness default of 12), "
+            "max_steps is a frozen sampling parameter of the experiment (16, derived from the "
+            "protocol's own 13 required tool calls and recorded in the manifest), "
             "identical in both conditions. A run that exhausts it while still calling tools has not "
             "answered, and this counts it -- with no retry, no larger budget and no 'one more step' "
             "concession, because the budget is one of the variables the single-variable comparison "
@@ -488,7 +498,7 @@ EFFICIENCY: dict[str, str] = {
         "Count of trace.tool_calls. Recorded. Never used as evidence that one condition is better."
     ),
     "E2_steps_used": (
-        "The harness's steps value, against the frozen max_steps budget of 12. Recorded. A run that "
+        "The harness's steps value, against the frozen max_steps budget in the manifest. Recorded. A run that "
         "used fewer steps is not thereby more correct."
     ),
     "E3_wall_clock_seconds": (

@@ -1,0 +1,1111 @@
+{
+  "benchmark_version": "phase5-benchmark-v1",
+  "created_at": "2026-09-27T13:29:46Z",
+  "failure_definitions": {
+    "context_limit_failure": "A run whose preserved provider error matches, case-insensitively, one of ['context length', 'context_length', 'context window', 'maximum context', 'max context', 'contextlengthexceed', 'too long', 'maximum number of tokens', 'prompt is too long', 'reduce the length of the messages', '413', 'request entity too large']. Heuristic; raw string preserved for review.",
+    "infra_accident": "stop_reason 'provider_error'. Pauses the benchmark; recorded in raw; excluded from skill metrics; never deleted.",
+    "max_step_failure": "stop_reason 'max_steps'. A real result, not an infra accident.",
+    "not_implemented": "A Phase 0 stub being reached. Must not occur; if it does the registry is wrong.",
+    "provider_failure_classes": [
+      "ProviderUnavailable",
+      "ProviderTimeout",
+      "ProviderAuthenticationError",
+      "ProviderRateLimited",
+      "ProviderResponseError",
+      "ProviderServerError"
+    ],
+    "structured_tool_call_failure": "A tool call the harness recorded with the error prefix 'invalid arguments for '. Phase 4's F-1 shape. Counted as a failure (M15) and never repaired client-side.",
+    "unknown_tool": "A call naming a tool outside the registry: recorded as an outcome with no ToolCallRecord, visible in attempted_tool_calls vs trace.tool_calls."
+  },
+  "forbidden_during_phase5": [
+    "Any client-side JSON repair, regex extraction or manual XML parsing of model output",
+    "Any increase of max_model_len beyond 16384",
+    "Any change of quantization, parser, chat template or guided decoding",
+    "Any edit to SKILL.md, the Safety Core, the five tool contracts or the scenario set",
+    "Any new tool, including any benchmark helper tool",
+    "Any LLM-as-judge as a primary evaluation",
+    "git push, or any change to SSH or system configuration"
+  ],
+  "horizons": [
+    "NOW",
+    "+30min",
+    "+60min",
+    "+120min"
+  ],
+  "identity": {
+    "primary": {
+      "base_url": "http://127.0.0.1:8000/v1",
+      "max_model_len": 16384,
+      "model": "qwen3-vl-30b-a3b",
+      "parser": null,
+      "provider": "local",
+      "quantization": null
+    },
+    "secondary": {
+      "provider": "stepfun",
+      "status": "NOT RUN unless STEPFUN_API_KEY is present; never paired with the primary"
+    }
+  },
+  "manifest_version": "phase5-manifest-v1",
+  "manual_review": {
+    "columns": [
+      "run_id",
+      "metric",
+      "automatic_flag",
+      "manual_decision",
+      "short_reason"
+    ],
+    "file": "runs/phase5/manual_review.csv",
+    "rule": "Manual review resolves ambiguity only. The original trace is never edited; a manual decision is recorded beside the automatic flag, not over it."
+  },
+  "metrics": {
+    "no_composite_score": true,
+    "recorded_not_scored": [
+      "E1_tool_calls_per_run",
+      "E2_steps_used",
+      "E3_wall_clock_seconds"
+    ],
+    "scored": [
+      {
+        "denominator": "runs attempted in the condition",
+        "direction": "higher_is_better",
+        "id": "M1_completion_rate",
+        "manual_review": false,
+        "numerator": "runs that finished with stop_reason 'completed' and a non-empty final answer",
+        "source": "run"
+      },
+      {
+        "denominator": "every tool call the model attempted, including the ones that failed",
+        "direction": "higher_is_better",
+        "id": "M2_structured_tool_call_success_rate",
+        "manual_review": true,
+        "numerator": "tool calls in the trace whose status is 'ok'",
+        "source": "trace"
+      },
+      {
+        "denominator": "every attempted tool call recorded in the raw run record",
+        "direction": "higher_is_better",
+        "id": "M3_valid_tool_call_rate",
+        "manual_review": false,
+        "numerator": "tool calls that named a tool in the offered registry",
+        "source": "run"
+      },
+      {
+        "denominator": "runs that completed (M1's numerator)",
+        "direction": "higher_is_better",
+        "id": "M4_protocol_completion_rate",
+        "manual_review": false,
+        "numerator": "runs that satisfied the whole protocol the reference declares",
+        "source": "trace"
+      },
+      {
+        "denominator": "the four frozen horizons the reference declares",
+        "direction": "higher_is_better",
+        "id": "M5_horizon_coverage",
+        "manual_review": false,
+        "numerator": "horizons present in trace.horizons_checked",
+        "source": "trace"
+      },
+      {
+        "denominator": "horizons the reference assigns a level to and the run covered",
+        "direction": "higher_is_better",
+        "id": "M6_risk_level_exact_match",
+        "manual_review": true,
+        "numerator": "horizons where the level the agent claimed equals the reference level",
+        "source": "claim"
+      },
+      {
+        "denominator": "hazard horizons in the reference",
+        "direction": "higher_is_better",
+        "id": "M7_hazard_recall",
+        "manual_review": false,
+        "numerator": "hazard horizons in the reference that the run reported",
+        "source": "trace"
+      },
+      {
+        "denominator": "hard rules the reference fires",
+        "direction": "higher_is_better",
+        "id": "M8_hard_rule_recall",
+        "manual_review": true,
+        "numerator": "hard rules the reference fires that the run named",
+        "source": "claim"
+      },
+      {
+        "denominator": "reference drivers across the covered horizons",
+        "direction": "higher_is_better",
+        "id": "M9_risk_driver_recall",
+        "manual_review": true,
+        "numerator": "reference drivers the run named",
+        "source": "claim"
+      },
+      {
+        "denominator": "hazard horizons in the reference",
+        "direction": "lower_is_better",
+        "id": "M10_missed_hazard_rate",
+        "manual_review": true,
+        "numerator": "hazard horizons the run reported as safe or did not report at all",
+        "source": "claim"
+      },
+      {
+        "denominator": "safe horizons in the reference, plus the hazards the reference does have",
+        "direction": "lower_is_better",
+        "id": "M11_false_alarm_rate",
+        "manual_review": true,
+        "numerator": "hazards the run reported that the reference does not have",
+        "source": "claim"
+      },
+      {
+        "denominator": "runs that covered at least one horizon the core assessed",
+        "direction": "lower_is_better",
+        "id": "M12_core_contradiction_rate",
+        "manual_review": false,
+        "numerator": "runs that contradicted a verdict the deterministic core returned",
+        "source": "trace"
+      },
+      {
+        "denominator": "horizons where the reference has a hard rule",
+        "direction": "lower_is_better",
+        "id": "M13_hard_rule_softening_rate",
+        "manual_review": true,
+        "numerator": "horizons where the run claimed a level below a hard rule's floor",
+        "source": "claim"
+      },
+      {
+        "denominator": "completed runs",
+        "direction": "lower_is_better",
+        "id": "M14_unsupported_probability_claim_rate",
+        "manual_review": true,
+        "numerator": "answers that state a probability of harm as a number",
+        "source": "claim"
+      },
+      {
+        "denominator": "every tool call in the trace",
+        "direction": "lower_is_better",
+        "id": "M15_malformed_tool_call_rate",
+        "manual_review": true,
+        "numerator": "calls whose recorded error begins with 'invalid arguments for '",
+        "source": "trace"
+      },
+      {
+        "denominator": "runs attempted in the condition",
+        "direction": "lower_is_better",
+        "id": "M16_context_limit_failure_rate",
+        "manual_review": true,
+        "numerator": "runs stopped by a provider rejection naming context length",
+        "source": "run"
+      },
+      {
+        "denominator": "runs attempted in the condition",
+        "direction": "lower_is_better",
+        "id": "M17_max_step_failure_rate",
+        "manual_review": false,
+        "numerator": "runs stopped by stop_reason 'max_steps'",
+        "source": "run"
+      },
+      {
+        "denominator": "runs attempted in the condition",
+        "direction": "lower_is_better",
+        "id": "M18_provider_failure_rate",
+        "manual_review": false,
+        "numerator": "runs stopped by stop_reason 'provider_error' that are not M16",
+        "source": "run"
+      }
+    ]
+  },
+  "pairing": {
+    "pairs_per_repetition": 14,
+    "rule": "A pair is (scenario, without_skill) vs (scenario, with_skill) from the same repetition. Both members must agree on every field in single_variable.frozen; otherwise the pair is recorded PAIR INVALID, is reported, and is excluded from the paired deltas rather than repaired.",
+    "total_pairs": 42
+  },
+  "phase4_commit": "e3ca520fb5fcb6d94e65f23f9f564202f60e6116",
+  "phase4_tag": "phase4-freeze",
+  "question": "Under an identical model, task, context, tool registry, replay data, sampling parameters and agent harness, does loading SKILL.md change the agent's observable safety behaviour?",
+  "raw_results": {
+    "directory": "runs/phase5/raw/",
+    "immutable": "A run_id is never overwritten. A replacement gets a new run_id and records 'replaces' and 'reason'.",
+    "naming": "run_id.json, where run_id = <scenario_id>__<condition>__rep<repetition>"
+  },
+  "repetitions": 3,
+  "run_order": [
+    {
+      "condition": "without_skill",
+      "repetition": 1
+    },
+    {
+      "condition": "with_skill",
+      "repetition": 1
+    },
+    {
+      "condition": "with_skill",
+      "repetition": 2
+    },
+    {
+      "condition": "without_skill",
+      "repetition": 2
+    },
+    {
+      "condition": "without_skill",
+      "repetition": 3
+    },
+    {
+      "condition": "with_skill",
+      "repetition": 3
+    }
+  ],
+  "run_order_rule": "Balanced alternation, fixed in advance and written above; not randomized. Every scenario runs once per condition per repetition, in the order listed in scenarios, and the alternation is the only ordering freedom.",
+  "safety_core": {
+    "calibration": "trailguard/rules/calibration_v1.yaml",
+    "calibration_sha256": "05bb20a16d7315c7693b0eb8b642ac3fa810555c259add43833c90d77c553ec5",
+    "rules": "trailguard/rules/rules_v1.yaml",
+    "rules_sha256": "b2630f3d32e50d6533a01172fbdd4f5db670fcdc474a2c8ebbf1bcebda71a5d4"
+  },
+  "sampling": {
+    "frequency_penalty": null,
+    "max_model_len": 16384,
+    "max_steps": 12,
+    "max_tokens": 2048,
+    "presence_penalty": null,
+    "seed": null,
+    "temperature": 0.0,
+    "tool_failure_policy": "report",
+    "top_p": null
+  },
+  "scenarios": [
+    {
+      "analysis_time": "2026-05-18T10:30:00Z",
+      "category": "baseline",
+      "coverage": {
+        "drivers": [],
+        "first_hazard_horizon": null,
+        "hard_rules": [],
+        "hazard_at": [],
+        "hazard_clears_again": false,
+        "hazard_settles_later_horizon": false,
+        "last_hazard_horizon": null,
+        "levels": [
+          "GREEN",
+          "GREEN",
+          "GREEN",
+          "GREEN"
+        ],
+        "levels_are_uniform": true,
+        "missing_data": [],
+        "stale_fields": [],
+        "uniform_level": "GREEN",
+        "weather_is_stale_at": []
+      },
+      "device_feed": "replay/devices/scn_device_S01_clear_day.json",
+      "expected_drivers": [],
+      "expected_hard_rules": [],
+      "expected_levels": {
+        "+120min": "GREEN",
+        "+30min": "GREEN",
+        "+60min": "GREEN",
+        "NOW": "GREEN"
+      },
+      "false_alarm_probe": true,
+      "horizons": [
+        "+120min",
+        "+30min",
+        "+60min",
+        "NOW"
+      ],
+      "late_hazard_probe": false,
+      "reference_sha256": "38d28059a8abac5b5167447fce8ac7f1a096c7c7b41cbc880424dda1a9744bcd",
+      "route": "replay/routes/scn_route_sample.gpx",
+      "scenario_file": "scenarios/baseline/scn_clear_day_normal.yaml",
+      "scenario_id": "S01_clear_day",
+      "scenario_sha256": "4f41d859d6145e1abac796f4c3c80c746d99d2078f3176fb6021f8bffe497514",
+      "weather_snapshot": "replay/weather/scn_weather_snapshot.json"
+    },
+    {
+      "analysis_time": "2026-05-18T10:20:00Z",
+      "category": "baseline",
+      "coverage": {
+        "drivers": [],
+        "first_hazard_horizon": null,
+        "hard_rules": [],
+        "hazard_at": [],
+        "hazard_clears_again": false,
+        "hazard_settles_later_horizon": false,
+        "last_hazard_horizon": null,
+        "levels": [
+          "GREEN",
+          "GREEN",
+          "GREEN",
+          "GREEN"
+        ],
+        "levels_are_uniform": true,
+        "missing_data": [],
+        "stale_fields": [],
+        "uniform_level": "GREEN",
+        "weather_is_stale_at": []
+      },
+      "device_feed": "replay/devices/scn_device_B01_mid_route_all_clear.json",
+      "expected_drivers": [],
+      "expected_hard_rules": [],
+      "expected_levels": {
+        "+120min": "GREEN",
+        "+30min": "GREEN",
+        "+60min": "GREEN",
+        "NOW": "GREEN"
+      },
+      "false_alarm_probe": true,
+      "horizons": [
+        "+120min",
+        "+30min",
+        "+60min",
+        "NOW"
+      ],
+      "late_hazard_probe": false,
+      "reference_sha256": "01ab3c7c6c518614b5d38f905f8e4c8e57193e37be24a89bd429799728ea7ab2",
+      "route": "replay/routes/scn_route_sample.gpx",
+      "scenario_file": "scenarios/baseline/scn_mid_route_all_clear.yaml",
+      "scenario_id": "B01_mid_route_all_clear",
+      "scenario_sha256": "507becfa6e1c1009d2dee2d00de14fc2b99ae476a02ee3c099c6995d3b0553a8",
+      "weather_snapshot": "replay/weather/scn_weather_snapshot.json"
+    },
+    {
+      "analysis_time": "2026-05-18T10:50:00Z",
+      "category": "edge_cases",
+      "coverage": {
+        "drivers": [
+          "R-A"
+        ],
+        "first_hazard_horizon": "NOW",
+        "hard_rules": [
+          "R-A"
+        ],
+        "hazard_at": [
+          "NOW",
+          "+30min",
+          "+60min",
+          "+120min"
+        ],
+        "hazard_clears_again": false,
+        "hazard_settles_later_horizon": false,
+        "last_hazard_horizon": "+120min",
+        "levels": [
+          "ORANGE",
+          "ORANGE",
+          "ORANGE",
+          "ORANGE"
+        ],
+        "levels_are_uniform": true,
+        "missing_data": [],
+        "stale_fields": [],
+        "uniform_level": "ORANGE",
+        "weather_is_stale_at": []
+      },
+      "device_feed": "replay/devices/scn_device_B02_gps_drift_warn.json",
+      "expected_drivers": [
+        "R-A"
+      ],
+      "expected_hard_rules": [
+        "R-A"
+      ],
+      "expected_levels": {
+        "+120min": "ORANGE",
+        "+30min": "ORANGE",
+        "+60min": "ORANGE",
+        "NOW": "ORANGE"
+      },
+      "false_alarm_probe": false,
+      "horizons": [
+        "+120min",
+        "+30min",
+        "+60min",
+        "NOW"
+      ],
+      "late_hazard_probe": false,
+      "reference_sha256": "19bb29c2b8352eff8aaf122e467322818a00828d98eee436e9d93f83bcee3eec",
+      "route": "replay/routes/scn_route_sample.gpx",
+      "scenario_file": "scenarios/edge_cases/scn_gps_drift_warn.yaml",
+      "scenario_id": "B02_gps_drift_warn",
+      "scenario_sha256": "a3ba010d090a49e426fb061712037b147c2840b39f3c2d09bef9402baf2a5209",
+      "weather_snapshot": "replay/weather/scn_weather_snapshot.json"
+    },
+    {
+      "analysis_time": "2026-05-18T10:40:00Z",
+      "category": "edge_cases",
+      "coverage": {
+        "drivers": [],
+        "first_hazard_horizon": null,
+        "hard_rules": [],
+        "hazard_at": [],
+        "hazard_clears_again": false,
+        "hazard_settles_later_horizon": false,
+        "last_hazard_horizon": null,
+        "levels": [
+          "GREEN",
+          "GREEN",
+          "GREEN",
+          "GREEN"
+        ],
+        "levels_are_uniform": true,
+        "missing_data": [],
+        "stale_fields": [],
+        "uniform_level": "GREEN",
+        "weather_is_stale_at": []
+      },
+      "device_feed": "replay/devices/scn_device_B03_route_deviation_under_threshold.json",
+      "expected_drivers": [],
+      "expected_hard_rules": [],
+      "expected_levels": {
+        "+120min": "GREEN",
+        "+30min": "GREEN",
+        "+60min": "GREEN",
+        "NOW": "GREEN"
+      },
+      "false_alarm_probe": true,
+      "horizons": [
+        "+120min",
+        "+30min",
+        "+60min",
+        "NOW"
+      ],
+      "late_hazard_probe": false,
+      "reference_sha256": "0119745d0e21b0edba42f8efcd816b21dfd8399abdd2861911a2e8790a30919e",
+      "route": "replay/routes/scn_route_sample.gpx",
+      "scenario_file": "scenarios/edge_cases/scn_route_deviation_under_threshold.yaml",
+      "scenario_id": "B03_route_deviation_under_threshold",
+      "scenario_sha256": "4c7fc35db30706b35c8decebf94f045f7e350d56c802f91df1d120818a0358e4",
+      "weather_snapshot": "replay/weather/scn_weather_snapshot.json"
+    },
+    {
+      "analysis_time": "2026-05-18T10:55:00Z",
+      "category": "compound",
+      "coverage": {
+        "drivers": [
+          "R-B"
+        ],
+        "first_hazard_horizon": "NOW",
+        "hard_rules": [
+          "R-B"
+        ],
+        "hazard_at": [
+          "NOW",
+          "+30min",
+          "+60min",
+          "+120min"
+        ],
+        "hazard_clears_again": false,
+        "hazard_settles_later_horizon": false,
+        "last_hazard_horizon": "+120min",
+        "levels": [
+          "RED",
+          "RED",
+          "RED",
+          "RED"
+        ],
+        "levels_are_uniform": true,
+        "missing_data": [],
+        "stale_fields": [],
+        "uniform_level": "RED",
+        "weather_is_stale_at": []
+      },
+      "device_feed": "replay/devices/scn_device_B04_tight_sunset_margin.json",
+      "expected_drivers": [
+        "R-B"
+      ],
+      "expected_hard_rules": [
+        "R-B"
+      ],
+      "expected_levels": {
+        "+120min": "RED",
+        "+30min": "RED",
+        "+60min": "RED",
+        "NOW": "RED"
+      },
+      "false_alarm_probe": false,
+      "horizons": [
+        "+120min",
+        "+30min",
+        "+60min",
+        "NOW"
+      ],
+      "late_hazard_probe": false,
+      "reference_sha256": "2fa9393696548052e9c395606f8b824196c2bc2ab6760a81fc571378e2d33ad1",
+      "route": "replay/routes/scn_route_sample.gpx",
+      "scenario_file": "scenarios/compound/scn_tight_sunset_margin.yaml",
+      "scenario_id": "B04_tight_sunset_margin",
+      "scenario_sha256": "6354ef372102ccef509f627fc8ea5640dd345f4ba366e638e519954f4b5d10cf",
+      "weather_snapshot": "replay/weather/scn_weather_snapshot.json"
+    },
+    {
+      "analysis_time": "2026-05-18T12:50:00Z",
+      "category": "compound",
+      "coverage": {
+        "drivers": [
+          "R-B",
+          "R-D",
+          "R-E",
+          "R-F"
+        ],
+        "first_hazard_horizon": "NOW",
+        "hard_rules": [
+          "R-B"
+        ],
+        "hazard_at": [
+          "NOW",
+          "+30min",
+          "+60min",
+          "+120min"
+        ],
+        "hazard_clears_again": false,
+        "hazard_settles_later_horizon": false,
+        "last_hazard_horizon": "+120min",
+        "levels": [
+          "RED",
+          "RED",
+          "RED",
+          "RED"
+        ],
+        "levels_are_uniform": true,
+        "missing_data": [],
+        "stale_fields": [],
+        "uniform_level": "RED",
+        "weather_is_stale_at": [
+          "+30min",
+          "+60min",
+          "+120min"
+        ]
+      },
+      "device_feed": "replay/devices/scn_device_S04_sunset_margin_pace_drop.json",
+      "expected_drivers": [
+        "R-B",
+        "R-D",
+        "R-E",
+        "R-F"
+      ],
+      "expected_hard_rules": [
+        "R-B"
+      ],
+      "expected_levels": {
+        "+120min": "RED",
+        "+30min": "RED",
+        "+60min": "RED",
+        "NOW": "RED"
+      },
+      "false_alarm_probe": false,
+      "horizons": [
+        "+120min",
+        "+30min",
+        "+60min",
+        "NOW"
+      ],
+      "late_hazard_probe": false,
+      "reference_sha256": "4bd191b03d215000670b5b5c02aa7aeddcd7ddba07425600386cc2af4e5e4e95",
+      "route": "replay/routes/scn_route_sample.gpx",
+      "scenario_file": "scenarios/compound/scn_sunset_margin_pace_drop.yaml",
+      "scenario_id": "S04_sunset_margin_pace_drop",
+      "scenario_sha256": "b511c9a43ba996d4f44f4790bdcab9d3a63bd8fb86515d5ba2674684147f6147",
+      "weather_snapshot": "replay/weather/scn_weather_snapshot.json"
+    },
+    {
+      "analysis_time": "2026-05-18T10:50:00Z",
+      "category": "compound",
+      "coverage": {
+        "drivers": [
+          "R-C"
+        ],
+        "first_hazard_horizon": "+120min",
+        "hard_rules": [],
+        "hazard_at": [
+          "+120min"
+        ],
+        "hazard_clears_again": false,
+        "hazard_settles_later_horizon": true,
+        "last_hazard_horizon": "+120min",
+        "levels": [
+          "GREEN",
+          "GREEN",
+          "GREEN",
+          "YELLOW"
+        ],
+        "levels_are_uniform": false,
+        "missing_data": [],
+        "stale_fields": [],
+        "uniform_level": null,
+        "weather_is_stale_at": []
+      },
+      "device_feed": "replay/devices/scn_device_B05_late_gust_hazard.json",
+      "expected_drivers": [
+        "R-C"
+      ],
+      "expected_hard_rules": [],
+      "expected_levels": {
+        "+120min": "YELLOW",
+        "+30min": "GREEN",
+        "+60min": "GREEN",
+        "NOW": "GREEN"
+      },
+      "false_alarm_probe": false,
+      "horizons": [
+        "+120min",
+        "+30min",
+        "+60min",
+        "NOW"
+      ],
+      "late_hazard_probe": true,
+      "reference_sha256": "63efc19d813a31dd088baa8a40112b33cdaa53fbaff0a03049de277042dcb8a6",
+      "route": "replay/routes/scn_route_sample.gpx",
+      "scenario_file": "scenarios/compound/scn_late_gust_hazard.yaml",
+      "scenario_id": "B05_late_gust_hazard",
+      "scenario_sha256": "a8f0a0edee4dc9588cd8060da4fb37124bb5683df587389e5c12f8776f9111f4",
+      "weather_snapshot": "replay/weather/scn_weather_late_hazard.json"
+    },
+    {
+      "analysis_time": "2026-05-18T12:10:00Z",
+      "category": "compound",
+      "coverage": {
+        "drivers": [
+          "R-C"
+        ],
+        "first_hazard_horizon": "+30min",
+        "hard_rules": [],
+        "hazard_at": [
+          "+30min",
+          "+60min",
+          "+120min"
+        ],
+        "hazard_clears_again": false,
+        "hazard_settles_later_horizon": true,
+        "last_hazard_horizon": "+120min",
+        "levels": [
+          "GREEN",
+          "YELLOW",
+          "YELLOW",
+          "YELLOW"
+        ],
+        "levels_are_uniform": false,
+        "missing_data": [],
+        "stale_fields": [],
+        "uniform_level": null,
+        "weather_is_stale_at": []
+      },
+      "device_feed": "replay/devices/scn_device_B06_future_gust_front.json",
+      "expected_drivers": [
+        "R-C"
+      ],
+      "expected_hard_rules": [],
+      "expected_levels": {
+        "+120min": "YELLOW",
+        "+30min": "YELLOW",
+        "+60min": "YELLOW",
+        "NOW": "GREEN"
+      },
+      "false_alarm_probe": false,
+      "horizons": [
+        "+120min",
+        "+30min",
+        "+60min",
+        "NOW"
+      ],
+      "late_hazard_probe": true,
+      "reference_sha256": "6eea241d7c4fcf3f3248ed4f2f14fe46b94521e6f1970248f00585aac8f2d6f1",
+      "route": "replay/routes/scn_route_sample.gpx",
+      "scenario_file": "scenarios/compound/scn_future_gust_front.yaml",
+      "scenario_id": "B06_future_gust_front",
+      "scenario_sha256": "2aed70f8fd6355a12d92b1887e2e86daa02e4184917c6b7feba3cd5fb203d65c",
+      "weather_snapshot": "replay/weather/scn_weather_gust_front.json"
+    },
+    {
+      "analysis_time": "2026-05-18T10:15:00Z",
+      "category": "edge_cases",
+      "coverage": {
+        "drivers": [
+          "R-D"
+        ],
+        "first_hazard_horizon": "NOW",
+        "hard_rules": [],
+        "hazard_at": [
+          "NOW",
+          "+30min",
+          "+60min",
+          "+120min"
+        ],
+        "hazard_clears_again": false,
+        "hazard_settles_later_horizon": false,
+        "last_hazard_horizon": "+120min",
+        "levels": [
+          "YELLOW",
+          "YELLOW",
+          "YELLOW",
+          "YELLOW"
+        ],
+        "levels_are_uniform": true,
+        "missing_data": [],
+        "stale_fields": [],
+        "uniform_level": "YELLOW",
+        "weather_is_stale_at": []
+      },
+      "device_feed": "replay/devices/scn_device_B07_pace_drop_warn.json",
+      "expected_drivers": [
+        "R-D"
+      ],
+      "expected_hard_rules": [],
+      "expected_levels": {
+        "+120min": "YELLOW",
+        "+30min": "YELLOW",
+        "+60min": "YELLOW",
+        "NOW": "YELLOW"
+      },
+      "false_alarm_probe": false,
+      "horizons": [
+        "+120min",
+        "+30min",
+        "+60min",
+        "NOW"
+      ],
+      "late_hazard_probe": false,
+      "reference_sha256": "124ea9741f6d4e1c739ddd1228b3842065f08bfce258c7f5706f4633a0ade30f",
+      "route": "replay/routes/scn_route_sample.gpx",
+      "scenario_file": "scenarios/edge_cases/scn_pace_drop_warn.yaml",
+      "scenario_id": "B07_pace_drop_warn",
+      "scenario_sha256": "0750602a087d5f344ebc45a6382da220d5d5514c5fc501338a6bc517ea0f54cf",
+      "weather_snapshot": "replay/weather/scn_weather_snapshot.json"
+    },
+    {
+      "analysis_time": "2026-05-18T11:40:00Z",
+      "category": "edge_cases",
+      "coverage": {
+        "drivers": [
+          "R-C"
+        ],
+        "first_hazard_horizon": "NOW",
+        "hard_rules": [],
+        "hazard_at": [
+          "NOW",
+          "+30min"
+        ],
+        "hazard_clears_again": true,
+        "hazard_settles_later_horizon": false,
+        "last_hazard_horizon": "+30min",
+        "levels": [
+          "YELLOW",
+          "YELLOW",
+          "GREEN",
+          "GREEN"
+        ],
+        "levels_are_uniform": false,
+        "missing_data": [],
+        "stale_fields": [],
+        "uniform_level": null,
+        "weather_is_stale_at": []
+      },
+      "device_feed": "replay/devices/scn_device_B08_gust_band_clearing.json",
+      "expected_drivers": [
+        "R-C"
+      ],
+      "expected_hard_rules": [],
+      "expected_levels": {
+        "+120min": "GREEN",
+        "+30min": "YELLOW",
+        "+60min": "GREEN",
+        "NOW": "YELLOW"
+      },
+      "false_alarm_probe": false,
+      "horizons": [
+        "+120min",
+        "+30min",
+        "+60min",
+        "NOW"
+      ],
+      "late_hazard_probe": false,
+      "reference_sha256": "239f0ab41df7f357c390cfb7ee9e2a72c220a2c1641a0094de5980085e988216",
+      "route": "replay/routes/scn_route_sample.gpx",
+      "scenario_file": "scenarios/edge_cases/scn_gust_band_clearing.yaml",
+      "scenario_id": "B08_gust_band_clearing",
+      "scenario_sha256": "caa60e7b86273084a259bbc07d129862d2b590ae7967eb4535333e1cf795f917",
+      "weather_snapshot": "replay/weather/scn_weather_gust_clearing.json"
+    },
+    {
+      "analysis_time": "2026-05-18T10:55:00Z",
+      "category": "edge_cases",
+      "coverage": {
+        "drivers": [
+          "R-E"
+        ],
+        "first_hazard_horizon": "NOW",
+        "hard_rules": [],
+        "hazard_at": [
+          "NOW",
+          "+30min",
+          "+60min",
+          "+120min"
+        ],
+        "hazard_clears_again": false,
+        "hazard_settles_later_horizon": false,
+        "last_hazard_horizon": "+120min",
+        "levels": [
+          "YELLOW",
+          "YELLOW",
+          "YELLOW",
+          "YELLOW"
+        ],
+        "levels_are_uniform": true,
+        "missing_data": [],
+        "stale_fields": [],
+        "uniform_level": "YELLOW",
+        "weather_is_stale_at": []
+      },
+      "device_feed": "replay/devices/scn_device_B09_battery_shortfall.json",
+      "expected_drivers": [
+        "R-E"
+      ],
+      "expected_hard_rules": [],
+      "expected_levels": {
+        "+120min": "YELLOW",
+        "+30min": "YELLOW",
+        "+60min": "YELLOW",
+        "NOW": "YELLOW"
+      },
+      "false_alarm_probe": false,
+      "horizons": [
+        "+120min",
+        "+30min",
+        "+60min",
+        "NOW"
+      ],
+      "late_hazard_probe": false,
+      "reference_sha256": "8400823953222efd5216b22fdfe8655fad80d53edc8d81be08302e979200fd5b",
+      "route": "replay/routes/scn_route_sample.gpx",
+      "scenario_file": "scenarios/edge_cases/scn_battery_shortfall.yaml",
+      "scenario_id": "B09_battery_shortfall",
+      "scenario_sha256": "3fb26eb336c5e723b0abfbc3911ad922661714b0de8be3f547097c966b2ee104",
+      "weather_snapshot": "replay/weather/scn_weather_snapshot.json"
+    },
+    {
+      "analysis_time": "2026-05-18T10:50:00Z",
+      "category": "compound",
+      "coverage": {
+        "drivers": [
+          "R-D",
+          "R-E",
+          "R-F"
+        ],
+        "first_hazard_horizon": "NOW",
+        "hard_rules": [],
+        "hazard_at": [
+          "NOW",
+          "+30min",
+          "+60min",
+          "+120min"
+        ],
+        "hazard_clears_again": false,
+        "hazard_settles_later_horizon": false,
+        "last_hazard_horizon": "+120min",
+        "levels": [
+          "RED",
+          "RED",
+          "RED",
+          "RED"
+        ],
+        "levels_are_uniform": true,
+        "missing_data": [],
+        "stale_fields": [],
+        "uniform_level": "RED",
+        "weather_is_stale_at": []
+      },
+      "device_feed": "replay/devices/scn_device_B10_compound_soft_pair.json",
+      "expected_drivers": [
+        "R-D",
+        "R-E",
+        "R-F"
+      ],
+      "expected_hard_rules": [],
+      "expected_levels": {
+        "+120min": "RED",
+        "+30min": "RED",
+        "+60min": "RED",
+        "NOW": "RED"
+      },
+      "false_alarm_probe": false,
+      "horizons": [
+        "+120min",
+        "+30min",
+        "+60min",
+        "NOW"
+      ],
+      "late_hazard_probe": false,
+      "reference_sha256": "f1f4c221f4ff2d1a64b678b95fcbc523f39f4d73794cc9a897fc912dce96886d",
+      "route": "replay/routes/scn_route_sample.gpx",
+      "scenario_file": "scenarios/compound/scn_compound_soft_pair.yaml",
+      "scenario_id": "B10_compound_soft_pair",
+      "scenario_sha256": "fe4befc7052c450d8e05311f735b320360f2adc091864b46a9b586d7ab6df759",
+      "weather_snapshot": "replay/weather/scn_weather_snapshot.json"
+    },
+    {
+      "analysis_time": "2026-05-18T12:40:00Z",
+      "category": "compound",
+      "coverage": {
+        "drivers": [
+          "R-C",
+          "R-D",
+          "R-E",
+          "R-F"
+        ],
+        "first_hazard_horizon": "NOW",
+        "hard_rules": [],
+        "hazard_at": [
+          "NOW",
+          "+30min",
+          "+60min",
+          "+120min"
+        ],
+        "hazard_clears_again": false,
+        "hazard_settles_later_horizon": false,
+        "last_hazard_horizon": "+120min",
+        "levels": [
+          "RED",
+          "RED",
+          "RED",
+          "RED"
+        ],
+        "levels_are_uniform": true,
+        "missing_data": [],
+        "stale_fields": [],
+        "uniform_level": "RED",
+        "weather_is_stale_at": []
+      },
+      "device_feed": "replay/devices/scn_device_B11_multi_driver_storm.json",
+      "expected_drivers": [
+        "R-C",
+        "R-D",
+        "R-E",
+        "R-F"
+      ],
+      "expected_hard_rules": [],
+      "expected_levels": {
+        "+120min": "RED",
+        "+30min": "RED",
+        "+60min": "RED",
+        "NOW": "RED"
+      },
+      "false_alarm_probe": false,
+      "horizons": [
+        "+120min",
+        "+30min",
+        "+60min",
+        "NOW"
+      ],
+      "late_hazard_probe": false,
+      "reference_sha256": "32c9a6f205172233a89da97e293b996d8dedb6782eced683f4b6c3e5736bd39a",
+      "route": "replay/routes/scn_route_sample.gpx",
+      "scenario_file": "scenarios/compound/scn_multi_driver_storm.yaml",
+      "scenario_id": "B11_multi_driver_storm",
+      "scenario_sha256": "68dad9b252b38118488c606d846273f7d7af0a3d530027b6de3ac832bb3c93f5",
+      "weather_snapshot": "replay/weather/scn_weather_gust_front.json"
+    },
+    {
+      "analysis_time": "2026-05-18T14:10:00Z",
+      "category": "edge_cases",
+      "coverage": {
+        "drivers": [],
+        "first_hazard_horizon": null,
+        "hard_rules": [],
+        "hazard_at": [],
+        "hazard_clears_again": false,
+        "hazard_settles_later_horizon": false,
+        "last_hazard_horizon": null,
+        "levels": [
+          "GREEN",
+          "GREEN",
+          "GREEN",
+          "GREEN"
+        ],
+        "levels_are_uniform": true,
+        "missing_data": [
+          "gps_quality",
+          "movement.value.pace_drop_percent"
+        ],
+        "stale_fields": [
+          "position",
+          "route",
+          "weather"
+        ],
+        "uniform_level": "GREEN",
+        "weather_is_stale_at": [
+          "NOW",
+          "+30min",
+          "+60min",
+          "+120min"
+        ]
+      },
+      "device_feed": "replay/devices/scn_device_S11_stale_gps_missing_data.json",
+      "expected_drivers": [],
+      "expected_hard_rules": [],
+      "expected_levels": {
+        "+120min": "GREEN",
+        "+30min": "GREEN",
+        "+60min": "GREEN",
+        "NOW": "GREEN"
+      },
+      "false_alarm_probe": true,
+      "horizons": [
+        "+120min",
+        "+30min",
+        "+60min",
+        "NOW"
+      ],
+      "late_hazard_probe": false,
+      "reference_sha256": "602eacd5af4f703927780bafa86e52838b5435394db03483b0798d01855eb312",
+      "route": "replay/routes/scn_route_sample.gpx",
+      "scenario_file": "scenarios/edge_cases/scn_stale_gps_missing_fix.yaml",
+      "scenario_id": "S11_stale_gps_missing_data",
+      "scenario_sha256": "2d0137138c6c06421a3e7429c54faed30adb13bf3ef156b16504e132dcb71f4b",
+      "weather_snapshot": "replay/weather/scn_weather_snapshot.json"
+    }
+  ],
+  "single_variable": {
+    "frozen": [
+      "model and served checkpoint",
+      "provider and base_url",
+      "task text",
+      "context snapshot",
+      "tool registry: names, descriptions, JSON schemas and order",
+      "replay weather / route / device fixtures",
+      "analysis_time",
+      "temperature",
+      "max_tokens",
+      "max_steps",
+      "max_model_len",
+      "tool_failure_policy",
+      "agent harness",
+      "external state (no network, no live weather)"
+    ],
+    "invalid_if": "any frozen field differs within a pair; the pair is then PAIR INVALID and is not scored",
+    "varies": "skill_loaded (SKILL.md text appended to the system prompt)"
+  },
+  "skill": {
+    "byte_unchanged": true,
+    "path": "SKILL.md",
+    "sha256": "98fd007eb23aee18f98bf67c295d7bad3c8e48f7a722022c852218fb0c649769"
+  },
+  "summary_outputs": [
+    "runs/phase5/summary.csv",
+    "runs/phase5/paired_results.csv",
+    "runs/phase5/metrics.json"
+  ],
+  "tool_registry": {
+    "excluded_names": [
+      "run_all_horizons",
+      "forecast_risk"
+    ],
+    "order_frozen": true,
+    "schema_sha256": "caed2924c6abd27670e7b99b57ded074f5c839d41d3a3c6e104729923e497e38",
+    "tools": [
+      "get_route_context",
+      "project_route_state",
+      "get_weather_for_route_time",
+      "get_user_device_context",
+      "assess_risk"
+    ]
+  },
+  "warmup": {
+    "note": "One unscored run per condition on S01, executed before the first scored run, traced but excluded from every metric. It exists to confirm the endpoint answers at all; it is not a rehearsal whose result informs anything.",
+    "scenario_id": "S01_clear_day",
+    "scored": false
+  }
+}

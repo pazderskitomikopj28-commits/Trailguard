@@ -1,0 +1,59 @@
+{
+  "synthetic": true,
+  "source": "synthetic weather fixture, not live data",
+  "note": "SYNTHETIC COMPETITION DEMO FIXTURE -- not Open-Meteo historical data and not a real forecast. Hand-authored TrailGuard replay asset for Phase 5 benchmark scenario B06 (future gust front) and B11 (multi-driver storm). The scenario's projected arrival instants fall between 12:10 and 14:40, so this file only covers the window a hiker on this clock actually reaches, and the gust ramp meets them there: 28 km/h at 12:00, 50 km/h at 13:00, 72 km/h at 14:00, 74 km/h at 15:00. The R-C gust threshold in the frozen rule pack is 45 km/h, so a scenario whose analysis clock sits at 12:10 reads a safe NOW row and a hazardous +30 row from the SAME file -- which is the point: only the horizon changes. Values are invented. precipitation_probability arrives in percent ('%' in hourly_units, exactly as open-meteo reports it) and must be divided by 100 to obtain the 0..1 probability the TrailGuard schemas use.",
+  "scenario_date": "2026-05-18",
+  "latitude": 46.081,
+  "longitude": 7.772,
+  "elevation": 1379,
+  "generationtime_ms": 0.38,
+  "timezone": "UTC",
+  "timezone_abbreviation": "UTC",
+  "utc_offset_seconds": 0,
+  "generated_at": "2026-05-18T11:40:00Z",
+  "hourly_units": {
+    "time": "iso8601",
+    "temperature_2m": "\u00b0C",
+    "precipitation_probability": "%",
+    "wind_speed_10m": "km/h",
+    "wind_gusts_10m": "km/h"
+  },
+  "hourly": {
+    "time": [
+      "2026-05-18T12:00Z",
+      "2026-05-18T13:00Z",
+      "2026-05-18T14:00Z",
+      "2026-05-18T15:00Z"
+    ],
+    "temperature_2m": [
+      15.2,
+      14.4,
+      13.1,
+      11.8
+    ],
+    "precipitation_probability": [
+      10,
+      25,
+      45,
+      55
+    ],
+    "wind_speed_10m": [
+      12.4,
+      18.6,
+      24.2,
+      26.8
+    ],
+    "wind_gusts_10m": [
+      28.0,
+      50.0,
+      72.0,
+      74.0
+    ],
+    "weather_code": [
+      2,
+      3,
+      61,
+      63
+    ]
+  }
+}

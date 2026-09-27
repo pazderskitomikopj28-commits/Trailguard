@@ -218,7 +218,18 @@ def scenario_chain(
     context = scenario.initial_context
     route_state = get_route_context(context.route.value.route_id, context.position.value, context.timestamp)
     device_state = get_user_device_context("scn_device_" + scenario.scenario_id)
-    snapshot = load_weather_snapshot()
+    # The snapshot the scenario *names*, not whichever one happens to be the default.
+    # A scenario whose weather_policy.snapshot_ref points at a different replay asset
+    # must be evaluated against that asset: the model in a benchmark run is handed
+    # the snapshot the scenario declares (the replay provider reads this very field),
+    # so a chain that silently substituted the default would score the run against
+    # weather it was never shown. The four frozen replay scenarios name the default
+    # asset, so this changes nothing for them -- it only stops the four Phase 5
+    # benchmark scenarios that deliberately name a different one from being graded
+    # against a gust series they never see. test_scenario_fixtures.py already pins
+    # that the declared ref resolves, so passing it through refuses rather than
+    # defaults when a scenario names nothing.
+    snapshot = load_weather_snapshot(context.weather_policy.snapshot_ref)
     records: list[HorizonRecord] = []
 
     for horizon in horizons:

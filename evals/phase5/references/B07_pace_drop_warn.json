@@ -1,0 +1,346 @@
+{
+  "analysis_time": "2026-05-18T10:15:00Z",
+  "benchmark_version": "phase5-benchmark-v1",
+  "calibration_pack_id": "trailguard_calibration_v1",
+  "calibration_sha256": "05bb20a16d7315c7693b0eb8b642ac3fa810555c259add43833c90d77c553ec5",
+  "category": "edge_cases",
+  "coverage": {
+    "drivers": [
+      "R-D"
+    ],
+    "first_hazard_horizon": "NOW",
+    "hard_rules": [],
+    "hazard_at": [
+      "NOW",
+      "+30min",
+      "+60min",
+      "+120min"
+    ],
+    "hazard_clears_again": false,
+    "hazard_settles_later_horizon": false,
+    "last_hazard_horizon": "+120min",
+    "levels": [
+      "YELLOW",
+      "YELLOW",
+      "YELLOW",
+      "YELLOW"
+    ],
+    "levels_are_uniform": true,
+    "missing_data": [],
+    "stale_fields": [],
+    "uniform_level": "YELLOW",
+    "weather_is_stale_at": []
+  },
+  "deterministic": true,
+  "device_context": {
+    "battery_percent": 88.0,
+    "fatigue_index": 0.18,
+    "movement": {
+      "avg_speed_10m": 2.5,
+      "avg_speed_30m": 3.0,
+      "current_speed_kmh": 2.4
+    },
+    "network_available": true,
+    "pace_drop_percent": 16.7
+  },
+  "device_feed_ref": "replay/devices/scn_device_B07_pace_drop_warn.json",
+  "device_feed_sha256": "0ecbe1e4de3168e5396e083434b9b94b5eba585af32d59d41cd7f546c31b0ca9",
+  "expectations_for_evaluator": {
+    "clearing_hazard_probe": false,
+    "false_alarm_probe": false,
+    "late_hazard_probe": false,
+    "per_horizon_drivers": {
+      "+120min": [
+        "R-D"
+      ],
+      "+30min": [
+        "R-D"
+      ],
+      "+60min": [
+        "R-D"
+      ],
+      "NOW": [
+        "R-D"
+      ]
+    },
+    "per_horizon_hard_rules": {
+      "+120min": [],
+      "+30min": [],
+      "+60min": [],
+      "NOW": []
+    },
+    "per_horizon_level": {
+      "+120min": "YELLOW",
+      "+30min": "YELLOW",
+      "+60min": "YELLOW",
+      "NOW": "YELLOW"
+    },
+    "safe_horizons": [],
+    "union_drivers": [
+      "R-D"
+    ],
+    "union_hard_rules": [],
+    "worst_level": "YELLOW"
+  },
+  "freshness_budget_min": 180,
+  "generator": "evals/phase5/references.py",
+  "horizons": {
+    "+120min": {
+      "estimated_minutes_to_finish": 199.09067243933328,
+      "horizon_min": 120,
+      "minutes_to_sunset": 505.0,
+      "projected_arrival_time": "2026-05-18T12:15:00Z",
+      "projected_position": {
+        "alt_m": 1710.7163056418347,
+        "lat": 46.116945002487135,
+        "lon": 7.79273971257432
+      },
+      "projected_route_progress": 0.741725452539756,
+      "projection_confidence": 0.9,
+      "remaining_distance_km": 2.842782403044436,
+      "risk": {
+        "confidence": 0.766429,
+        "drivers": [
+          {
+            "detail": "Pace Degradation: pace_drop_percent=16.7 gt 15 (pace_drop_percent_warn, band warn)",
+            "rule_id": "R-D",
+            "severity": "MEDIUM",
+            "type": "soft"
+          }
+        ],
+        "evidence_refs": [
+          "pack:trailguard_rules_v1@1.0.0",
+          "calibration:trailguard_calibration_v1@1.0.0",
+          "horizon:+120min",
+          "soft_score:25",
+          "risk_level:YELLOW",
+          "confidence:0.766429",
+          "rule:R-D:pace_drop_percent_warn:pace_drop_percent"
+        ],
+        "hard_rules_triggered": [],
+        "level": "YELLOW",
+        "score": 25
+      },
+      "safety_margins": {
+        "projected_battery_percent": 82.72728850404445,
+        "projection_confidence": 0.9,
+        "route_deviation_m": 3.972544042445639,
+        "time_margin_min": 305.9093275606667,
+        "weather_freshness_min": 135.0
+      },
+      "weather": {
+        "forecast_generated_at": "2026-05-18T10:00:00Z",
+        "freshness_budget_min": 180,
+        "freshness_minutes": 135.0,
+        "freshness_ok": true,
+        "precipitation_probability": 0.1,
+        "source": "synthetic fixture, not live data@2026-05-18T14:00:00+02:00",
+        "temperature_c": 15.6,
+        "weather_code": 2,
+        "wind_gust_kmh": 26.2,
+        "wind_speed_kmh": 13.1
+      }
+    },
+    "+30min": {
+      "estimated_minutes_to_finish": 199.09067243933328,
+      "horizon_min": 30,
+      "minutes_to_sunset": 505.0,
+      "projected_arrival_time": "2026-05-18T10:45:00Z",
+      "projected_position": {
+        "alt_m": 1443.9192922326658,
+        "lat": 46.09011087512359,
+        "lon": 7.776930428876045
+      },
+      "projected_route_progress": 0.44782595017742777,
+      "projection_confidence": 0.97,
+      "remaining_distance_km": 6.077682403044436,
+      "risk": {
+        "confidence": 0.8055,
+        "drivers": [
+          {
+            "detail": "Pace Degradation: pace_drop_percent=16.7 gt 15 (pace_drop_percent_warn, band warn)",
+            "rule_id": "R-D",
+            "severity": "MEDIUM",
+            "type": "soft"
+          }
+        ],
+        "evidence_refs": [
+          "pack:trailguard_rules_v1@1.0.0",
+          "calibration:trailguard_calibration_v1@1.0.0",
+          "horizon:+30min",
+          "soft_score:25",
+          "risk_level:YELLOW",
+          "confidence:0.8055",
+          "rule:R-D:pace_drop_percent_warn:pace_drop_percent"
+        ],
+        "hard_rules_triggered": [],
+        "level": "YELLOW",
+        "score": 25
+      },
+      "safety_margins": {
+        "projected_battery_percent": 76.72728850404445,
+        "projection_confidence": 0.97,
+        "route_deviation_m": 3.972544042445639,
+        "time_margin_min": 305.9093275606667,
+        "weather_freshness_min": 45.0
+      },
+      "weather": {
+        "forecast_generated_at": "2026-05-18T10:00:00Z",
+        "freshness_budget_min": 180,
+        "freshness_minutes": 45.0,
+        "freshness_ok": true,
+        "precipitation_probability": 0.08,
+        "source": "synthetic fixture, not live data@2026-05-18T13:00:00+02:00",
+        "temperature_c": 15.0,
+        "weather_code": 2,
+        "wind_gust_kmh": 24.6,
+        "wind_speed_kmh": 12.4
+      }
+    },
+    "+60min": {
+      "estimated_minutes_to_finish": 199.09067243933328,
+      "horizon_min": 60,
+      "minutes_to_sunset": 505.0,
+      "projected_arrival_time": "2026-05-18T11:15:00Z",
+      "projected_position": {
+        "alt_m": 1518.3196884913054,
+        "lat": 46.099318883310005,
+        "lon": 7.781318870307848
+      },
+      "projected_route_progress": 0.5457924509648705,
+      "projection_confidence": 0.94,
+      "remaining_distance_km": 4.999382403044436,
+      "risk": {
+        "confidence": 0.789235,
+        "drivers": [
+          {
+            "detail": "Pace Degradation: pace_drop_percent=16.7 gt 15 (pace_drop_percent_warn, band warn)",
+            "rule_id": "R-D",
+            "severity": "MEDIUM",
+            "type": "soft"
+          }
+        ],
+        "evidence_refs": [
+          "pack:trailguard_rules_v1@1.0.0",
+          "calibration:trailguard_calibration_v1@1.0.0",
+          "horizon:+60min",
+          "soft_score:25",
+          "risk_level:YELLOW",
+          "confidence:0.789235",
+          "rule:R-D:pace_drop_percent_warn:pace_drop_percent"
+        ],
+        "hard_rules_triggered": [],
+        "level": "YELLOW",
+        "score": 25
+      },
+      "safety_margins": {
+        "projected_battery_percent": 78.72728850404445,
+        "projection_confidence": 0.94,
+        "route_deviation_m": 3.972544042445639,
+        "time_margin_min": 305.9093275606667,
+        "weather_freshness_min": 75.0
+      },
+      "weather": {
+        "forecast_generated_at": "2026-05-18T10:00:00Z",
+        "freshness_budget_min": 180,
+        "freshness_minutes": 75.0,
+        "freshness_ok": true,
+        "precipitation_probability": 0.08,
+        "source": "synthetic fixture, not live data@2026-05-18T13:00:00+02:00",
+        "temperature_c": 15.0,
+        "weather_code": 2,
+        "wind_gust_kmh": 24.6,
+        "wind_speed_kmh": 12.4
+      }
+    },
+    "NOW": {
+      "estimated_minutes_to_finish": 199.09067243933328,
+      "horizon_min": 0,
+      "minutes_to_sunset": 505.0,
+      "projected_arrival_time": "2026-05-18T10:15:00Z",
+      "projected_position": {
+        "alt_m": 1378.9151320992112,
+        "lat": 46.081014175273516,
+        "lon": 7.7720959374563146
+      },
+      "projected_route_progress": 0.34985944938998503,
+      "projection_confidence": 1.0,
+      "remaining_distance_km": 7.155982403044436,
+      "risk": {
+        "confidence": 0.825385,
+        "drivers": [
+          {
+            "detail": "Pace Degradation: pace_drop_percent=16.7 gt 15 (pace_drop_percent_warn, band warn)",
+            "rule_id": "R-D",
+            "severity": "MEDIUM",
+            "type": "soft"
+          }
+        ],
+        "evidence_refs": [
+          "pack:trailguard_rules_v1@1.0.0",
+          "calibration:trailguard_calibration_v1@1.0.0",
+          "horizon:NOW",
+          "soft_score:25",
+          "risk_level:YELLOW",
+          "confidence:0.825385",
+          "rule:R-D:pace_drop_percent_warn:pace_drop_percent"
+        ],
+        "hard_rules_triggered": [],
+        "level": "YELLOW",
+        "score": 25
+      },
+      "safety_margins": {
+        "projected_battery_percent": 74.72728850404445,
+        "projection_confidence": 1.0,
+        "route_deviation_m": 3.972544042445639,
+        "time_margin_min": 305.9093275606667,
+        "weather_freshness_min": 15.0
+      },
+      "weather": {
+        "forecast_generated_at": "2026-05-18T10:00:00Z",
+        "freshness_budget_min": 180,
+        "freshness_minutes": 15.0,
+        "freshness_ok": true,
+        "precipitation_probability": 0.08,
+        "source": "synthetic fixture, not live data@2026-05-18T12:00:00+02:00",
+        "temperature_c": 14.2,
+        "weather_code": 1,
+        "wind_gust_kmh": 23.1,
+        "wind_speed_kmh": 11.6
+      }
+    }
+  },
+  "llm_involved": false,
+  "required_horizons": [
+    "NOW",
+    "+30min",
+    "+60min",
+    "+120min"
+  ],
+  "required_tools": [
+    "get_route_context",
+    "project_route_state",
+    "get_weather_for_route_time",
+    "get_user_device_context",
+    "assess_risk"
+  ],
+  "route_context": {
+    "current_altitude_m": 1378.9151320992112,
+    "data_quality": 1.0,
+    "off_route_distance_m": 3.972544042445639,
+    "remaining_ascent_m": 726.0848679007888,
+    "remaining_distance_km": 7.155982403044436,
+    "route_id": "scn_route_sample",
+    "route_progress": 0.34985944938998503
+  },
+  "route_ref": "replay/routes/scn_route_sample.gpx",
+  "route_sha256": "a51c22724065faa31155f7a6198eb8e5c43847543a706bbda1f290a9a7e1955b",
+  "rule_pack_id": "trailguard_rules_v1",
+  "rules_sha256": "b2630f3d32e50d6533a01172fbdd4f5db670fcdc474a2c8ebbf1bcebda71a5d4",
+  "scenario_file": "scenarios/edge_cases/scn_pace_drop_warn.yaml",
+  "scenario_id": "B07_pace_drop_warn",
+  "scenario_sha256": "0750602a087d5f344ebc45a6382da220d5d5514c5fc501338a6bc517ea0f54cf",
+  "sunset_time": "2026-05-18T18:40:00Z",
+  "weather_snapshot_ref": "replay/weather/scn_weather_snapshot.json",
+  "weather_snapshot_sha256": "817543047a1b002d8fece6eaa9ca0cffe76500a5d964f46deb29fa5e97ee23bd"
+}

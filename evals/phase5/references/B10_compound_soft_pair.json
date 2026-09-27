@@ -1,0 +1,410 @@
+{
+  "analysis_time": "2026-05-18T10:50:00Z",
+  "benchmark_version": "phase5-benchmark-v1",
+  "calibration_pack_id": "trailguard_calibration_v1",
+  "calibration_sha256": "05bb20a16d7315c7693b0eb8b642ac3fa810555c259add43833c90d77c553ec5",
+  "category": "compound",
+  "coverage": {
+    "drivers": [
+      "R-D",
+      "R-E",
+      "R-F"
+    ],
+    "first_hazard_horizon": "NOW",
+    "hard_rules": [],
+    "hazard_at": [
+      "NOW",
+      "+30min",
+      "+60min",
+      "+120min"
+    ],
+    "hazard_clears_again": false,
+    "hazard_settles_later_horizon": false,
+    "last_hazard_horizon": "+120min",
+    "levels": [
+      "RED",
+      "RED",
+      "RED",
+      "RED"
+    ],
+    "levels_are_uniform": true,
+    "missing_data": [],
+    "stale_fields": [],
+    "uniform_level": "RED",
+    "weather_is_stale_at": []
+  },
+  "deterministic": true,
+  "device_context": {
+    "battery_percent": 26.0,
+    "fatigue_index": 0.2,
+    "movement": {
+      "avg_speed_10m": 2.2,
+      "avg_speed_30m": 2.6,
+      "current_speed_kmh": 2.0
+    },
+    "network_available": true,
+    "pace_drop_percent": 15.4
+  },
+  "device_feed_ref": "replay/devices/scn_device_B10_compound_soft_pair.json",
+  "device_feed_sha256": "4c4179c5831286245527faaf77a5999318a29f6a93406106f60646baac027e2a",
+  "expectations_for_evaluator": {
+    "clearing_hazard_probe": false,
+    "false_alarm_probe": false,
+    "late_hazard_probe": false,
+    "per_horizon_drivers": {
+      "+120min": [
+        "R-D",
+        "R-E",
+        "R-F"
+      ],
+      "+30min": [
+        "R-D",
+        "R-E",
+        "R-F"
+      ],
+      "+60min": [
+        "R-D",
+        "R-E",
+        "R-F"
+      ],
+      "NOW": [
+        "R-D",
+        "R-E",
+        "R-F"
+      ]
+    },
+    "per_horizon_hard_rules": {
+      "+120min": [],
+      "+30min": [],
+      "+60min": [],
+      "NOW": []
+    },
+    "per_horizon_level": {
+      "+120min": "RED",
+      "+30min": "RED",
+      "+60min": "RED",
+      "NOW": "RED"
+    },
+    "safe_horizons": [],
+    "union_drivers": [
+      "R-D",
+      "R-E",
+      "R-F"
+    ],
+    "union_hard_rules": [],
+    "worst_level": "RED"
+  },
+  "freshness_budget_min": 180,
+  "generator": "evals/phase5/references.py",
+  "horizons": {
+    "+120min": {
+      "estimated_minutes_to_finish": 217.31473230057452,
+      "horizon_min": 120,
+      "minutes_to_sunset": 470.0,
+      "projected_arrival_time": "2026-05-18T12:50:00Z",
+      "projected_position": {
+        "alt_m": 1698.6252757549773,
+        "lat": 46.11606171962784,
+        "lon": 7.791950619685502
+      },
+      "projected_route_progress": 0.7312241978335879,
+      "projection_confidence": 0.9,
+      "remaining_distance_km": 2.9583678619374654,
+      "risk": {
+        "confidence": 0.749286,
+        "drivers": [
+          {
+            "detail": "Pace Degradation: pace_drop_percent=15.4 gt 15 (pace_drop_percent_warn, band warn)",
+            "rule_id": "R-D",
+            "severity": "MEDIUM",
+            "type": "soft"
+          },
+          {
+            "detail": "Battery x Remaining Route: projected_battery_percent=19.5124 lt 20 (projected_battery_percent_warn, band warn) | context: battery_percent=26, remaining_distance_km=2.95837, estimated_minutes_to_finish=97.3147, network_available=yes",
+            "rule_id": "R-E",
+            "severity": "HIGH",
+            "type": "soft"
+          },
+          {
+            "detail": "Compound Risk: 2 independent soft rules at or above MEDIUM (R-D(MEDIUM), R-E(HIGH)) meet the configured minimum of 2, so the level escalates by 1",
+            "rule_id": "R-F",
+            "severity": "MEDIUM",
+            "type": "soft"
+          }
+        ],
+        "evidence_refs": [
+          "pack:trailguard_rules_v1@1.0.0",
+          "calibration:trailguard_calibration_v1@1.0.0",
+          "horizon:+120min",
+          "soft_score:65",
+          "risk_level:RED",
+          "confidence:0.749286",
+          "rule:R-D:pace_drop_percent_warn:pace_drop_percent",
+          "rule:R-E:projected_battery_percent_warn:projected_battery_percent"
+        ],
+        "hard_rules_triggered": [],
+        "level": "RED",
+        "score": 65
+      },
+      "safety_margins": {
+        "projected_battery_percent": 19.512351179961698,
+        "projection_confidence": 0.9,
+        "route_deviation_m": 6.040696916925102,
+        "time_margin_min": 252.68526769942548,
+        "weather_freshness_min": 170.0
+      },
+      "weather": {
+        "forecast_generated_at": "2026-05-18T10:00:00Z",
+        "freshness_budget_min": 180,
+        "freshness_minutes": 170.0,
+        "freshness_ok": true,
+        "precipitation_probability": 0.12,
+        "source": "synthetic fixture, not live data@2026-05-18T15:00:00+02:00",
+        "temperature_c": 15.9,
+        "weather_code": 2,
+        "wind_gust_kmh": 27.4,
+        "wind_speed_kmh": 13.6
+      }
+    },
+    "+30min": {
+      "estimated_minutes_to_finish": 217.31473230057452,
+      "horizon_min": 30,
+      "minutes_to_sunset": 470.0,
+      "projected_arrival_time": "2026-05-18T11:20:00Z",
+      "projected_position": {
+        "alt_m": 1469.6250140917118,
+        "lat": 46.09338652141389,
+        "lon": 7.778480093628551
+      },
+      "projected_route_progress": 0.4826511234067649,
+      "projection_confidence": 0.97,
+      "remaining_distance_km": 5.694367861937466,
+      "risk": {
+        "confidence": 0.782038,
+        "drivers": [
+          {
+            "detail": "Pace Degradation: pace_drop_percent=15.4 gt 15 (pace_drop_percent_warn, band warn)",
+            "rule_id": "R-D",
+            "severity": "MEDIUM",
+            "type": "soft"
+          },
+          {
+            "detail": "Battery x Remaining Route: projected_battery_percent=13.5124 lt 20 (projected_battery_percent_warn, band warn) | context: battery_percent=26, remaining_distance_km=5.69437, estimated_minutes_to_finish=187.315, network_available=yes",
+            "rule_id": "R-E",
+            "severity": "HIGH",
+            "type": "soft"
+          },
+          {
+            "detail": "Compound Risk: 2 independent soft rules at or above MEDIUM (R-D(MEDIUM), R-E(HIGH)) meet the configured minimum of 2, so the level escalates by 1",
+            "rule_id": "R-F",
+            "severity": "MEDIUM",
+            "type": "soft"
+          }
+        ],
+        "evidence_refs": [
+          "pack:trailguard_rules_v1@1.0.0",
+          "calibration:trailguard_calibration_v1@1.0.0",
+          "horizon:+30min",
+          "soft_score:65",
+          "risk_level:RED",
+          "confidence:0.782038",
+          "rule:R-D:pace_drop_percent_warn:pace_drop_percent",
+          "rule:R-E:projected_battery_percent_warn:projected_battery_percent"
+        ],
+        "hard_rules_triggered": [],
+        "level": "RED",
+        "score": 65
+      },
+      "safety_margins": {
+        "projected_battery_percent": 13.5123511799617,
+        "projection_confidence": 0.97,
+        "route_deviation_m": 6.040696916925102,
+        "time_margin_min": 252.68526769942548,
+        "weather_freshness_min": 80.0
+      },
+      "weather": {
+        "forecast_generated_at": "2026-05-18T10:00:00Z",
+        "freshness_budget_min": 180,
+        "freshness_minutes": 80.0,
+        "freshness_ok": true,
+        "precipitation_probability": 0.08,
+        "source": "synthetic fixture, not live data@2026-05-18T13:00:00+02:00",
+        "temperature_c": 15.0,
+        "weather_code": 2,
+        "wind_gust_kmh": 24.6,
+        "wind_speed_kmh": 12.4
+      }
+    },
+    "+60min": {
+      "estimated_minutes_to_finish": 217.31473230057452,
+      "horizon_min": 60,
+      "minutes_to_sunset": 470.0,
+      "projected_arrival_time": "2026-05-18T11:50:00Z",
+      "projected_position": {
+        "alt_m": 1534.3041098217393,
+        "lat": 46.101168816632175,
+        "lon": 7.782216105918053
+      },
+      "projected_route_progress": 0.5655088148823726,
+      "projection_confidence": 0.94,
+      "remaining_distance_km": 4.782367861937466,
+      "risk": {
+        "confidence": 0.768586,
+        "drivers": [
+          {
+            "detail": "Pace Degradation: pace_drop_percent=15.4 gt 15 (pace_drop_percent_warn, band warn)",
+            "rule_id": "R-D",
+            "severity": "MEDIUM",
+            "type": "soft"
+          },
+          {
+            "detail": "Battery x Remaining Route: projected_battery_percent=15.5124 lt 20 (projected_battery_percent_warn, band warn) | context: battery_percent=26, remaining_distance_km=4.78237, estimated_minutes_to_finish=157.315, network_available=yes",
+            "rule_id": "R-E",
+            "severity": "HIGH",
+            "type": "soft"
+          },
+          {
+            "detail": "Compound Risk: 2 independent soft rules at or above MEDIUM (R-D(MEDIUM), R-E(HIGH)) meet the configured minimum of 2, so the level escalates by 1",
+            "rule_id": "R-F",
+            "severity": "MEDIUM",
+            "type": "soft"
+          }
+        ],
+        "evidence_refs": [
+          "pack:trailguard_rules_v1@1.0.0",
+          "calibration:trailguard_calibration_v1@1.0.0",
+          "horizon:+60min",
+          "soft_score:65",
+          "risk_level:RED",
+          "confidence:0.768586",
+          "rule:R-D:pace_drop_percent_warn:pace_drop_percent",
+          "rule:R-E:projected_battery_percent_warn:projected_battery_percent"
+        ],
+        "hard_rules_triggered": [],
+        "level": "RED",
+        "score": 65
+      },
+      "safety_margins": {
+        "projected_battery_percent": 15.5123511799617,
+        "projection_confidence": 0.94,
+        "route_deviation_m": 6.040696916925102,
+        "time_margin_min": 252.68526769942548,
+        "weather_freshness_min": 110.0
+      },
+      "weather": {
+        "forecast_generated_at": "2026-05-18T10:00:00Z",
+        "freshness_budget_min": 180,
+        "freshness_minutes": 110.0,
+        "freshness_ok": true,
+        "precipitation_probability": 0.1,
+        "source": "synthetic fixture, not live data@2026-05-18T14:00:00+02:00",
+        "temperature_c": 15.6,
+        "weather_code": 2,
+        "wind_gust_kmh": 26.2,
+        "wind_speed_kmh": 13.1
+      }
+    },
+    "NOW": {
+      "estimated_minutes_to_finish": 217.31473230057452,
+      "horizon_min": 0,
+      "minutes_to_sunset": 470.0,
+      "projected_arrival_time": "2026-05-18T10:50:00Z",
+      "projected_position": {
+        "alt_m": 1410.728090488662,
+        "lat": 46.08562949696852,
+        "lon": 7.774645899445497
+      },
+      "projected_route_progress": 0.3997934319311572,
+      "projection_confidence": 1.0,
+      "remaining_distance_km": 6.606367861937466,
+      "risk": {
+        "confidence": 0.797826,
+        "drivers": [
+          {
+            "detail": "Pace Degradation: pace_drop_percent=15.4 gt 15 (pace_drop_percent_warn, band warn)",
+            "rule_id": "R-D",
+            "severity": "MEDIUM",
+            "type": "soft"
+          },
+          {
+            "detail": "Battery x Remaining Route: projected_battery_percent=11.5124 lt 20 (projected_battery_percent_warn, band warn) | context: battery_percent=26, remaining_distance_km=6.60637, estimated_minutes_to_finish=217.315, network_available=yes",
+            "rule_id": "R-E",
+            "severity": "HIGH",
+            "type": "soft"
+          },
+          {
+            "detail": "Compound Risk: 2 independent soft rules at or above MEDIUM (R-D(MEDIUM), R-E(HIGH)) meet the configured minimum of 2, so the level escalates by 1",
+            "rule_id": "R-F",
+            "severity": "MEDIUM",
+            "type": "soft"
+          }
+        ],
+        "evidence_refs": [
+          "pack:trailguard_rules_v1@1.0.0",
+          "calibration:trailguard_calibration_v1@1.0.0",
+          "horizon:NOW",
+          "soft_score:65",
+          "risk_level:RED",
+          "confidence:0.797826",
+          "rule:R-D:pace_drop_percent_warn:pace_drop_percent",
+          "rule:R-E:projected_battery_percent_warn:projected_battery_percent"
+        ],
+        "hard_rules_triggered": [],
+        "level": "RED",
+        "score": 65
+      },
+      "safety_margins": {
+        "projected_battery_percent": 11.5123511799617,
+        "projection_confidence": 1.0,
+        "route_deviation_m": 6.040696916925102,
+        "time_margin_min": 252.68526769942548,
+        "weather_freshness_min": 50.0
+      },
+      "weather": {
+        "forecast_generated_at": "2026-05-18T10:00:00Z",
+        "freshness_budget_min": 180,
+        "freshness_minutes": 50.0,
+        "freshness_ok": true,
+        "precipitation_probability": 0.08,
+        "source": "synthetic fixture, not live data@2026-05-18T13:00:00+02:00",
+        "temperature_c": 15.0,
+        "weather_code": 2,
+        "wind_gust_kmh": 24.6,
+        "wind_speed_kmh": 12.4
+      }
+    }
+  },
+  "llm_involved": false,
+  "required_horizons": [
+    "NOW",
+    "+30min",
+    "+60min",
+    "+120min"
+  ],
+  "required_tools": [
+    "get_route_context",
+    "project_route_state",
+    "get_weather_for_route_time",
+    "get_user_device_context",
+    "assess_risk"
+  ],
+  "route_context": {
+    "current_altitude_m": 1410.728090488662,
+    "data_quality": 1.0,
+    "off_route_distance_m": 6.040696916925102,
+    "remaining_ascent_m": 694.271909511338,
+    "remaining_distance_km": 6.606367861937466,
+    "route_id": "scn_route_sample",
+    "route_progress": 0.3997934319311572
+  },
+  "route_ref": "replay/routes/scn_route_sample.gpx",
+  "route_sha256": "a51c22724065faa31155f7a6198eb8e5c43847543a706bbda1f290a9a7e1955b",
+  "rule_pack_id": "trailguard_rules_v1",
+  "rules_sha256": "b2630f3d32e50d6533a01172fbdd4f5db670fcdc474a2c8ebbf1bcebda71a5d4",
+  "scenario_file": "scenarios/compound/scn_compound_soft_pair.yaml",
+  "scenario_id": "B10_compound_soft_pair",
+  "scenario_sha256": "fe4befc7052c450d8e05311f735b320360f2adc091864b46a9b586d7ab6df759",
+  "sunset_time": "2026-05-18T18:40:00Z",
+  "weather_snapshot_ref": "replay/weather/scn_weather_snapshot.json",
+  "weather_snapshot_sha256": "817543047a1b002d8fece6eaa9ca0cffe76500a5d964f46deb29fa5e97ee23bd"
+}

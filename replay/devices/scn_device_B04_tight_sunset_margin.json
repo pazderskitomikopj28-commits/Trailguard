@@ -1,0 +1,69 @@
+{
+  "device_id": "scn_device_B04_tight_sunset_margin",
+  "scenario_ref": "scenarios/compound/scn_tight_sunset_margin.yaml",
+  "provenance_note": "Simulated device feed, generated from the frozen replay scenario's own device_timeline (spec 17, 5.4). This is NOT a real device reading and NOT a real incident record: it exists so the deterministic core can be exercised offline and reproducibly. The t=0 row is byte-identical to the scenario's initial_context.device.value, which a test cross-checks.",
+  "feed_note": "Battery declines at the scenario's own rate and the fatigue index climbs at its own rate; fatigue_index is a rule-constructed simulated feature, never a medical model output (spec 5.4). Where a scenario's subject is the projected battery, the observed decline here is narrative only: rule R-E reads the single calibrated 4 %/h projection rate recorded in trailguard/rules/calibration_v1.yaml, not this feed.",
+  "current": {
+    "battery_percent": 72.0,
+    "network_available": true,
+    "fatigue_index": 0.3,
+    "movement": {
+      "current_speed_kmh": 1.57,
+      "avg_speed_10m": 1.57,
+      "avg_speed_30m": 1.57,
+      "pace_drop_percent": 0.0
+    },
+    "data_quality": 0.94,
+    "last_network_time": "2026-05-18T10:53:00Z"
+  },
+  "timeline": [
+    {
+      "t_offset_min": 30.0,
+      "value": {
+        "battery_percent": 70.0,
+        "network_available": true,
+        "fatigue_index": 0.34,
+        "last_network_time": "2026-05-18T11:23:00Z",
+        "movement": {
+          "current_speed_kmh": 1.47,
+          "avg_speed_10m": 1.47,
+          "avg_speed_30m": 1.47,
+          "pace_drop_percent": 0.1
+        },
+        "data_quality": 0.94
+      }
+    },
+    {
+      "t_offset_min": 60.0,
+      "value": {
+        "battery_percent": 68.0,
+        "network_available": true,
+        "fatigue_index": 0.38,
+        "last_network_time": "2026-05-18T11:53:00Z",
+        "movement": {
+          "current_speed_kmh": 1.37,
+          "avg_speed_10m": 1.37,
+          "avg_speed_30m": 1.37,
+          "pace_drop_percent": 0.2
+        },
+        "data_quality": 0.94
+      }
+    },
+    {
+      "t_offset_min": 120.0,
+      "value": {
+        "battery_percent": 66.0,
+        "network_available": true,
+        "fatigue_index": 0.42,
+        "last_network_time": "2026-05-18T12:53:00Z",
+        "movement": {
+          "current_speed_kmh": 1.27,
+          "avg_speed_10m": 1.27,
+          "avg_speed_30m": 1.27,
+          "pace_drop_percent": 0.3
+        },
+        "data_quality": 0.94
+      }
+    }
+  ]
+}

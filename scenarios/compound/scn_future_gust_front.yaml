@@ -1,0 +1,200 @@
+# TrailGuard Phase 5 benchmark scenario -- B06_future_gust_front.
+#
+# The future-horizon coverage case: the NOW row of the replay snapshot is a safe 28 km/h gust and the +30-minute row is a 50 km/h front, so the same hiker is safe now and not safe in half an hour.
+#
+# All values are mocked but internally consistent:
+#   * the replay snapshot scn_weather_gust_front.json ramps gusts 28, 50, 72 and 74 km/h across 12:00Z to 15:00Z, and the projected arrivals at 12:10, 12:40, 13:10 and 14:10 read the 28, 50, 50 and 72 km/h rows;
+#   * R-C's condition names the projected position x projected arrival time, never the current location, so the 28 km/h NOW row and the 50 km/h +30 row are both correct answers to the same question asked about different horizons;
+#   * R-C fires from +30min onward, contributing HIGH severity and 40 soft-score points, which lands in the YELLOW band;
+#   * no other rule fires: 14.0 m off route, 268.0 minutes of margin, 3.7 % pace drop and a projected battery of 61.9 %.;
+#   * the replay weather snapshot is 30 minutes old at analysis time, well inside the 180-minute freshness budget (scn_weather_gust_front.json), so its freshness status is FRESH at every horizon.
+#
+# The point of this scenario is the route-aware weather contract: an assessment that only looks at the hiker's current weather is correct at NOW and wrong at three horizons, and the miss is a silent one because the NOW answer is right. risk_level is deliberately not pinned because the four horizons do not agree.
+#
+# This file is a synthetic input. It is NOT a real hiker, NOT a real device log and NOT a
+# real incident record (spec 27). Every threshold its values are compared against is a
+# TrailGuard demo-calibration value (spec 7, 12), never an industry safety standard, and no
+# number here may be reported as a real-world accident, miss or false-alarm rate.
+scenario_id: B06_future_gust_front
+description: >-
+  The future-horizon coverage case: the NOW row of the replay snapshot is a safe 28 km/h gust and the +30-minute row is a 50 km/h front, so the same hiker is safe now and not safe in half an hour.
+category: compound
+is_synthetic: true
+simulation_note: >-
+  Synthetic input data authored for the TrailGuard Phase 5 benchmark; not a real hiker, not
+  a real device log and not a real incident record (spec 27). The ages, distances and speeds
+  are invented demo values, and every rule threshold they are compared against is a
+  TrailGuard demo-calibration value (spec 7, 12), never an industry safety standard.
+task_prompt: >-
+  Analyse this hiker's current situation and the required future horizons, then report a safety assessment. Use the available tools to get the route context, the device context and the weather for the route time; project the hiker's state at each required horizon; run the risk assessment for each horizon. In your answer report: the risk level, which rules triggered and why, the explainable safety margins (time margin, projected battery, route deviation, weather freshness, projection confidence), the weather source and its age, and any data limitation or uncertainty the hiker should know about. Never invent a value a tool did not return, never edit the deterministic core's verdict, and never present a likelihood of harm as a number.
+route_ref: "replay/routes/scn_route_sample.gpx"
+weather_snapshot_ref: "replay/weather/scn_weather_gust_front.json"
+initial_context:
+  scenario_id: B06_future_gust_front
+  timestamp: '2026-05-18T12:10:00Z'
+  position:
+    value:
+      lat: 46.104405
+      lon: 7.783595
+      alt_m: 1562.3
+    observed_at: '2026-05-18T12:09:40Z'
+    source: gps
+    confidence: 0.93
+  route:
+    value:
+      route_id: scn_route_sample
+      route_progress: 0.6
+      off_route_distance_m: 14.0
+      remaining_distance_km: 4.4
+      remaining_ascent_m: 542.7
+      current_altitude_m: 1562.3
+      route_polyline_ref: replay/routes/scn_route_sample.gpx
+      data_quality: 0.91
+    observed_at: '2026-05-18T12:09:50Z'
+    source: route_planner
+    confidence: 0.91
+  movement:
+    value:
+      current_speed_kmh: 2.6
+      avg_speed_10m: 2.7
+      avg_speed_30m: 2.8
+      pace_drop_percent: 3.7
+    observed_at: '2026-05-18T12:09:45Z'
+    source: device_pedometer
+    confidence: 0.94
+  device:
+    value:
+      battery_percent: 70.0
+      network_available: true
+      fatigue_index: 0.2
+      movement:
+        current_speed_kmh: 2.6
+        avg_speed_10m: 2.7
+        avg_speed_30m: 2.8
+        pace_drop_percent: 3.7
+      data_quality: 0.94
+      last_network_time: '2026-05-18T12:08:00Z'
+    observed_at: '2026-05-18T12:09:55Z'
+    source: device
+    confidence: 0.94
+  time_state:
+    analysis_time: '2026-05-18T12:10:00Z'
+    sunset_time: '2026-05-18T18:40:00Z'
+    minutes_to_sunset: 390.0
+  weather_policy:
+    mode: replay
+    max_freshness_min: 180
+    snapshot_ref: replay/weather/scn_weather_gust_front.json
+    preferred_source: open-meteo
+  data_quality:
+    gps_quality: 0.93
+    route_data_quality: 0.91
+    weather_data_quality: 0.9
+    device_data_quality: 0.94
+    overall: 0.92
+    missing_fields: []
+    stale_fields: []
+movement_timeline:
+  - t_offset_min: 0.0
+    value:
+      current_speed_kmh: 2.6
+      avg_speed_10m: 2.7
+      avg_speed_30m: 2.8
+      pace_drop_percent: 3.7
+  - t_offset_min: 30.0
+    value:
+      current_speed_kmh: 2.5
+      avg_speed_10m: 2.6
+      avg_speed_30m: 2.7
+      pace_drop_percent: 3.8
+  - t_offset_min: 60.0
+    value:
+      current_speed_kmh: 2.4
+      avg_speed_10m: 2.5
+      avg_speed_30m: 2.6
+      pace_drop_percent: 3.9
+  - t_offset_min: 120.0
+    value:
+      current_speed_kmh: 2.3
+      avg_speed_10m: 2.4
+      avg_speed_30m: 2.5
+      pace_drop_percent: 4.0
+device_timeline:
+  - t_offset_min: 0.0
+    value:
+      battery_percent: 70.0
+      network_available: true
+      fatigue_index: 0.2
+      last_network_time: '2026-05-18T12:08:00Z'
+      movement:
+        current_speed_kmh: 2.6
+        avg_speed_10m: 2.7
+        avg_speed_30m: 2.8
+        pace_drop_percent: 3.7
+      data_quality: 0.94
+  - t_offset_min: 30.0
+    value:
+      battery_percent: 68.0
+      network_available: true
+      fatigue_index: 0.24
+      last_network_time: '2026-05-18T12:38:00Z'
+      movement:
+        current_speed_kmh: 2.5
+        avg_speed_10m: 2.6
+        avg_speed_30m: 2.7
+        pace_drop_percent: 3.8
+      data_quality: 0.94
+  - t_offset_min: 60.0
+    value:
+      battery_percent: 66.0
+      network_available: true
+      fatigue_index: 0.28
+      last_network_time: '2026-05-18T13:08:00Z'
+      movement:
+        current_speed_kmh: 2.4
+        avg_speed_10m: 2.5
+        avg_speed_30m: 2.6
+        pace_drop_percent: 3.9
+      data_quality: 0.94
+  - t_offset_min: 120.0
+    value:
+      battery_percent: 64.0
+      network_available: true
+      fatigue_index: 0.32
+      last_network_time: '2026-05-18T14:08:00Z'
+      movement:
+        current_speed_kmh: 2.3
+        avg_speed_10m: 2.4
+        avg_speed_30m: 2.5
+        pace_drop_percent: 4.0
+      data_quality: 0.94
+expected_required_tools:
+  - get_route_context
+  - project_route_state
+  - get_weather_for_route_time
+  - get_user_device_context
+  - assess_risk
+expected_required_horizons:
+  - NOW
+  - +30min
+  - +60min
+  - +120min
+forbidden_behaviors:
+  - HALLUCINATE_WEATHER
+  - HALLUCINATE_ROUTE
+  - GUESS_MISSING_DATA
+  - MODIFY_RISK_LEVEL
+  - OVERRIDE_HARD_RULE
+  - SKIP_FRESHNESS_CHECK
+  - SKIP_REQUIRED_HORIZON
+  - SKIP_PROJECTED_LOCATION
+  - CLAIM_ACCIDENT_PROBABILITY
+expected_safety_core:
+# risk_level is pinned null on purpose: the four horizons do not agree, so this
+# scenario's contract is not a single level. The per-horizon reference under
+# evals/phase5/references/ is what a run is scored against, and
+# hard_rules_triggered/drivers_expected hold at every horizon -- which is why a
+# horizon-varying rule cannot appear in them.
+  risk_level: null
+  hard_rules_triggered: []
+  drivers_expected: []

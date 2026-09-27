@@ -1,0 +1,370 @@
+{
+  "analysis_time": "2026-05-18T10:50:00Z",
+  "benchmark_version": "phase5-benchmark-v1",
+  "calibration_pack_id": "trailguard_calibration_v1",
+  "calibration_sha256": "05bb20a16d7315c7693b0eb8b642ac3fa810555c259add43833c90d77c553ec5",
+  "category": "edge_cases",
+  "coverage": {
+    "drivers": [
+      "R-A"
+    ],
+    "first_hazard_horizon": "NOW",
+    "hard_rules": [
+      "R-A"
+    ],
+    "hazard_at": [
+      "NOW",
+      "+30min",
+      "+60min",
+      "+120min"
+    ],
+    "hazard_clears_again": false,
+    "hazard_settles_later_horizon": false,
+    "last_hazard_horizon": "+120min",
+    "levels": [
+      "ORANGE",
+      "ORANGE",
+      "ORANGE",
+      "ORANGE"
+    ],
+    "levels_are_uniform": true,
+    "missing_data": [],
+    "stale_fields": [],
+    "uniform_level": "ORANGE",
+    "weather_is_stale_at": []
+  },
+  "deterministic": true,
+  "device_context": {
+    "battery_percent": 80.0,
+    "fatigue_index": 0.1,
+    "movement": {
+      "avg_speed_10m": 3.4,
+      "avg_speed_30m": 3.5,
+      "current_speed_kmh": 3.3
+    },
+    "network_available": true,
+    "pace_drop_percent": 2.9
+  },
+  "device_feed_ref": "replay/devices/scn_device_B02_gps_drift_warn.json",
+  "device_feed_sha256": "ceace11d29a02fb4356593608ec6a3c8c37993f6cfd28de13c1d32b59c3b74cb",
+  "expectations_for_evaluator": {
+    "clearing_hazard_probe": false,
+    "false_alarm_probe": false,
+    "late_hazard_probe": false,
+    "per_horizon_drivers": {
+      "+120min": [
+        "R-A"
+      ],
+      "+30min": [
+        "R-A"
+      ],
+      "+60min": [
+        "R-A"
+      ],
+      "NOW": [
+        "R-A"
+      ]
+    },
+    "per_horizon_hard_rules": {
+      "+120min": [
+        "R-A"
+      ],
+      "+30min": [
+        "R-A"
+      ],
+      "+60min": [
+        "R-A"
+      ],
+      "NOW": [
+        "R-A"
+      ]
+    },
+    "per_horizon_level": {
+      "+120min": "ORANGE",
+      "+30min": "ORANGE",
+      "+60min": "ORANGE",
+      "NOW": "ORANGE"
+    },
+    "safe_horizons": [],
+    "union_drivers": [
+      "R-A"
+    ],
+    "union_hard_rules": [
+      "R-A"
+    ],
+    "worst_level": "ORANGE"
+  },
+  "freshness_budget_min": 180,
+  "generator": "evals/phase5/references.py",
+  "horizons": {
+    "+120min": {
+      "estimated_minutes_to_finish": 151.3031820583774,
+      "horizon_min": 120,
+      "minutes_to_sunset": 470.0,
+      "projected_arrival_time": "2026-05-18T12:50:00Z",
+      "projected_position": {
+        "alt_m": 1861.6998778353475,
+        "lat": 46.12571870032274,
+        "lon": 7.80260427039772
+      },
+      "projected_route_progress": 0.8545304431236097,
+      "projection_confidence": 0.9,
+      "remaining_distance_km": 1.6011577622860023,
+      "risk": {
+        "confidence": 0.741286,
+        "drivers": [
+          {
+            "detail": "Route Deviation: off_route_distance_m=75.0103 gt 50 (off_route_distance_m, band warn) | persistence_observations not checked -- a stateless single-horizon assessment holds one observation, so the deviation is reported as measured and persistence is not asserted",
+            "rule_id": "R-A",
+            "severity": "HIGH",
+            "type": "hard"
+          }
+        ],
+        "evidence_refs": [
+          "pack:trailguard_rules_v1@1.0.0",
+          "calibration:trailguard_calibration_v1@1.0.0",
+          "horizon:+120min",
+          "soft_score:0",
+          "risk_level:ORANGE",
+          "confidence:0.741286",
+          "rule:R-A:off_route_distance_m:off_route_distance_m",
+          "hard_rules:R-A"
+        ],
+        "hard_rules_triggered": [
+          "R-A"
+        ],
+        "level": "ORANGE",
+        "score": 0
+      },
+      "safety_margins": {
+        "projected_battery_percent": 77.91312119610818,
+        "projection_confidence": 0.9,
+        "route_deviation_m": 75.0103427713818,
+        "time_margin_min": 318.6968179416226,
+        "weather_freshness_min": 170.0
+      },
+      "weather": {
+        "forecast_generated_at": "2026-05-18T10:00:00Z",
+        "freshness_budget_min": 180,
+        "freshness_minutes": 170.0,
+        "freshness_ok": true,
+        "precipitation_probability": 0.12,
+        "source": "synthetic fixture, not live data@2026-05-18T15:00:00+02:00",
+        "temperature_c": 15.9,
+        "weather_code": 2,
+        "wind_gust_kmh": 27.4,
+        "wind_speed_kmh": 13.6
+      }
+    },
+    "+30min": {
+      "estimated_minutes_to_finish": 151.3031820583774,
+      "horizon_min": 30,
+      "minutes_to_sunset": 470.0,
+      "projected_arrival_time": "2026-05-18T11:20:00Z",
+      "projected_position": {
+        "alt_m": 1435.4041097452232,
+        "lat": 46.08902579158308,
+        "lon": 7.776417133107161
+      },
+      "projected_route_progress": 0.4362898919087411,
+      "projection_confidence": 0.97,
+      "remaining_distance_km": 6.204657762286003,
+      "risk": {
+        "confidence": 0.774038,
+        "drivers": [
+          {
+            "detail": "Route Deviation: off_route_distance_m=75.0103 gt 50 (off_route_distance_m, band warn) | persistence_observations not checked -- a stateless single-horizon assessment holds one observation, so the deviation is reported as measured and persistence is not asserted",
+            "rule_id": "R-A",
+            "severity": "HIGH",
+            "type": "hard"
+          }
+        ],
+        "evidence_refs": [
+          "pack:trailguard_rules_v1@1.0.0",
+          "calibration:trailguard_calibration_v1@1.0.0",
+          "horizon:+30min",
+          "soft_score:0",
+          "risk_level:ORANGE",
+          "confidence:0.774038",
+          "rule:R-A:off_route_distance_m:off_route_distance_m",
+          "hard_rules:R-A"
+        ],
+        "hard_rules_triggered": [
+          "R-A"
+        ],
+        "level": "ORANGE",
+        "score": 0
+      },
+      "safety_margins": {
+        "projected_battery_percent": 71.91312119610818,
+        "projection_confidence": 0.97,
+        "route_deviation_m": 75.0103427713818,
+        "time_margin_min": 318.6968179416226,
+        "weather_freshness_min": 80.0
+      },
+      "weather": {
+        "forecast_generated_at": "2026-05-18T10:00:00Z",
+        "freshness_budget_min": 180,
+        "freshness_minutes": 80.0,
+        "freshness_ok": true,
+        "precipitation_probability": 0.08,
+        "source": "synthetic fixture, not live data@2026-05-18T13:00:00+02:00",
+        "temperature_c": 15.0,
+        "weather_code": 2,
+        "wind_gust_kmh": 24.6,
+        "wind_speed_kmh": 12.4
+      }
+    },
+    "+60min": {
+      "estimated_minutes_to_finish": 151.30318205837733,
+      "horizon_min": 60,
+      "minutes_to_sunset": 470.0,
+      "projected_arrival_time": "2026-05-18T11:50:00Z",
+      "projected_position": {
+        "alt_m": 1542.569056037831,
+        "lat": 46.10212534493994,
+        "lon": 7.782680056420979
+      },
+      "projected_route_progress": 0.575703408980364,
+      "projection_confidence": 0.94,
+      "remaining_distance_km": 4.670157762286002,
+      "risk": {
+        "confidence": 0.760586,
+        "drivers": [
+          {
+            "detail": "Route Deviation: off_route_distance_m=75.0103 gt 50 (off_route_distance_m, band warn) | persistence_observations not checked -- a stateless single-horizon assessment holds one observation, so the deviation is reported as measured and persistence is not asserted",
+            "rule_id": "R-A",
+            "severity": "HIGH",
+            "type": "hard"
+          }
+        ],
+        "evidence_refs": [
+          "pack:trailguard_rules_v1@1.0.0",
+          "calibration:trailguard_calibration_v1@1.0.0",
+          "horizon:+60min",
+          "soft_score:0",
+          "risk_level:ORANGE",
+          "confidence:0.760586",
+          "rule:R-A:off_route_distance_m:off_route_distance_m",
+          "hard_rules:R-A"
+        ],
+        "hard_rules_triggered": [
+          "R-A"
+        ],
+        "level": "ORANGE",
+        "score": 0
+      },
+      "safety_margins": {
+        "projected_battery_percent": 73.91312119610818,
+        "projection_confidence": 0.94,
+        "route_deviation_m": 75.0103427713818,
+        "time_margin_min": 318.69681794162267,
+        "weather_freshness_min": 110.0
+      },
+      "weather": {
+        "forecast_generated_at": "2026-05-18T10:00:00Z",
+        "freshness_budget_min": 180,
+        "freshness_minutes": 110.0,
+        "freshness_ok": true,
+        "precipitation_probability": 0.1,
+        "source": "synthetic fixture, not live data@2026-05-18T14:00:00+02:00",
+        "temperature_c": 15.6,
+        "weather_code": 2,
+        "wind_gust_kmh": 26.2,
+        "wind_speed_kmh": 13.1
+      }
+    },
+    "NOW": {
+      "estimated_minutes_to_finish": 151.3031820583774,
+      "horizon_min": 0,
+      "minutes_to_sunset": 470.0,
+      "projected_arrival_time": "2026-05-18T10:50:00Z",
+      "projected_position": {
+        "alt_m": 1347.7558644004203,
+        "lat": 46.0761729439545,
+        "lon": 7.769199569422521
+      },
+      "projected_route_progress": 0.29687637483711826,
+      "projection_confidence": 1.0,
+      "remaining_distance_km": 7.739157762286003,
+      "risk": {
+        "confidence": 0.789826,
+        "drivers": [
+          {
+            "detail": "Route Deviation: off_route_distance_m=75.0103 gt 50 (off_route_distance_m, band warn) | persistence_observations not checked -- a stateless single-horizon assessment holds one observation, so the deviation is reported as measured and persistence is not asserted",
+            "rule_id": "R-A",
+            "severity": "HIGH",
+            "type": "hard"
+          }
+        ],
+        "evidence_refs": [
+          "pack:trailguard_rules_v1@1.0.0",
+          "calibration:trailguard_calibration_v1@1.0.0",
+          "horizon:NOW",
+          "soft_score:0",
+          "risk_level:ORANGE",
+          "confidence:0.789826",
+          "rule:R-A:off_route_distance_m:off_route_distance_m",
+          "hard_rules:R-A"
+        ],
+        "hard_rules_triggered": [
+          "R-A"
+        ],
+        "level": "ORANGE",
+        "score": 0
+      },
+      "safety_margins": {
+        "projected_battery_percent": 69.91312119610818,
+        "projection_confidence": 1.0,
+        "route_deviation_m": 75.0103427713818,
+        "time_margin_min": 318.6968179416226,
+        "weather_freshness_min": 50.0
+      },
+      "weather": {
+        "forecast_generated_at": "2026-05-18T10:00:00Z",
+        "freshness_budget_min": 180,
+        "freshness_minutes": 50.0,
+        "freshness_ok": true,
+        "precipitation_probability": 0.08,
+        "source": "synthetic fixture, not live data@2026-05-18T13:00:00+02:00",
+        "temperature_c": 15.0,
+        "weather_code": 2,
+        "wind_gust_kmh": 24.6,
+        "wind_speed_kmh": 12.4
+      }
+    }
+  },
+  "llm_involved": false,
+  "required_horizons": [
+    "NOW",
+    "+30min",
+    "+60min",
+    "+120min"
+  ],
+  "required_tools": [
+    "get_route_context",
+    "project_route_state",
+    "get_weather_for_route_time",
+    "get_user_device_context",
+    "assess_risk"
+  ],
+  "route_context": {
+    "current_altitude_m": 1347.7558644004203,
+    "data_quality": 1.0,
+    "off_route_distance_m": 75.0103427713818,
+    "remaining_ascent_m": 757.2441355995797,
+    "remaining_distance_km": 7.739157762286003,
+    "route_id": "scn_route_sample",
+    "route_progress": 0.29687637483711826
+  },
+  "route_ref": "replay/routes/scn_route_sample.gpx",
+  "route_sha256": "a51c22724065faa31155f7a6198eb8e5c43847543a706bbda1f290a9a7e1955b",
+  "rule_pack_id": "trailguard_rules_v1",
+  "rules_sha256": "b2630f3d32e50d6533a01172fbdd4f5db670fcdc474a2c8ebbf1bcebda71a5d4",
+  "scenario_file": "scenarios/edge_cases/scn_gps_drift_warn.yaml",
+  "scenario_id": "B02_gps_drift_warn",
+  "scenario_sha256": "a3ba010d090a49e426fb061712037b147c2840b39f3c2d09bef9402baf2a5209",
+  "sunset_time": "2026-05-18T18:40:00Z",
+  "weather_snapshot_ref": "replay/weather/scn_weather_snapshot.json",
+  "weather_snapshot_sha256": "817543047a1b002d8fece6eaa9ca0cffe76500a5d964f46deb29fa5e97ee23bd"
+}

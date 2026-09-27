@@ -1344,4 +1344,16 @@ def test_the_live_provider_is_never_touched_by_the_frozen_scenarios() -> None:
         document = yaml.safe_load(path.read_text(encoding="utf-8"))
         policy = document["initial_context"]["weather_policy"]
         assert policy["mode"] == "replay", f"{path.name} must run offline"
-        assert policy["snapshot_ref"] == "replay/weather/scn_weather_snapshot.json"
+        # Replay, but not necessarily the one default asset. Phase 5's R-C coverage
+        # needs a gust front this default snapshot cannot produce: its steepest gust
+        # is 27.4 km/h against R-C's 45 km/h threshold, so a scenario pinned to it can
+        # never reach the future-weather rule at any horizon. The guarantee this test
+        # exists for is that the chain cannot reach the wire, and that guarantee is
+        # about `mode`; so the reference may name any snapshot that ships under
+        # replay/weather/, which is exactly what cannot be a live provider. Asserting
+        # it resolves also keeps a typo from silently selecting the default.
+        ref = REPO_ROOT / policy["snapshot_ref"]
+        assert ref.is_relative_to(REPO_ROOT / "replay" / "weather"), (
+            f"{path.name} names weather outside the replay directory"
+        )
+        assert ref.is_file(), f"{path.name} names a snapshot that does not resolve"

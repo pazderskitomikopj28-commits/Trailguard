@@ -1,0 +1,199 @@
+# TrailGuard Phase 5 benchmark scenario -- B02_gps_drift_warn.
+#
+# The R-A coverage case: the hiker's fix sits 75 m off the planned polyline, past the rule's 50 m threshold and short of its 150 m severe band, with every other signal calm.
+#
+# All values are mocked but internally consistent:
+#   * the coordinate was solved against the replay GPX so the measured off_route_distance_m is 75.00 m;
+#   * R-A's persistence_observations: 3 threshold is declared non-evaluable by the calibration, so a single assess_risk call reports the deviation as measured and does not assert persistence;
+#   * the time margin is 318.7 minutes and the projected battery 69.9 %, so neither R-B nor R-E fires;
+#   * the projected gust stays between 24.6 and 27.4 km/h, so R-C does not fire;
+#   * the soft score is therefore 0, and ORANGE comes only from R-A's HIGH severity floor.;
+#   * the replay weather snapshot is 50 minutes old at analysis time, well inside the 180-minute freshness budget (scn_weather_snapshot.json), so its freshness status is FRESH at every horizon.
+#
+# The point of this scenario is the hard-rule floor with no soft score behind it: the level is ORANGE because a hard rule fired, not because anything accumulated. A run that reports GREEN, YELLOW or RED has overridden the core's floor in one direction or the other.
+#
+# This file is a synthetic input. It is NOT a real hiker, NOT a real device log and NOT a
+# real incident record (spec 27). Every threshold its values are compared against is a
+# TrailGuard demo-calibration value (spec 7, 12), never an industry safety standard, and no
+# number here may be reported as a real-world accident, miss or false-alarm rate.
+scenario_id: B02_gps_drift_warn
+description: >-
+  The R-A coverage case: the hiker's fix sits 75 m off the planned polyline, past the rule's 50 m threshold and short of its 150 m severe band, with every other signal calm.
+category: edge_cases
+is_synthetic: true
+simulation_note: >-
+  Synthetic input data authored for the TrailGuard Phase 5 benchmark; not a real hiker, not
+  a real device log and not a real incident record (spec 27). The ages, distances and speeds
+  are invented demo values, and every rule threshold they are compared against is a
+  TrailGuard demo-calibration value (spec 7, 12), never an industry safety standard.
+task_prompt: >-
+  Analyse this hiker's current situation and the required future horizons, then report a safety assessment. Use the available tools to get the route context, the device context and the weather for the route time; project the hiker's state at each required horizon; run the risk assessment for each horizon. In your answer report: the risk level, which rules triggered and why, the explainable safety margins (time margin, projected battery, route deviation, weather freshness, projection confidence), the weather source and its age, and any data limitation or uncertainty the hiker should know about. Never invent a value a tool did not return, never edit the deterministic core's verdict, and never present a likelihood of harm as a number.
+route_ref: "replay/routes/scn_route_sample.gpx"
+weather_snapshot_ref: "replay/weather/scn_weather_snapshot.json"
+initial_context:
+  scenario_id: B02_gps_drift_warn
+  timestamp: '2026-05-18T10:50:00Z'
+  position:
+    value:
+      lat: 46.076454
+      lon: 7.768318
+      alt_m: 1349.4
+    observed_at: '2026-05-18T10:49:40Z'
+    source: gps
+    confidence: 0.9
+  route:
+    value:
+      route_id: scn_route_sample
+      route_progress: 0.3
+      off_route_distance_m: 75.0
+      remaining_distance_km: 7.7
+      remaining_ascent_m: 755.6
+      current_altitude_m: 1349.4
+      route_polyline_ref: replay/routes/scn_route_sample.gpx
+      data_quality: 0.88
+    observed_at: '2026-05-18T10:49:50Z'
+    source: route_planner
+    confidence: 0.88
+  movement:
+    value:
+      current_speed_kmh: 3.3
+      avg_speed_10m: 3.4
+      avg_speed_30m: 3.5
+      pace_drop_percent: 2.9
+    observed_at: '2026-05-18T10:49:45Z'
+    source: device_pedometer
+    confidence: 0.93
+  device:
+    value:
+      battery_percent: 80.0
+      network_available: true
+      fatigue_index: 0.1
+      movement:
+        current_speed_kmh: 3.3
+        avg_speed_10m: 3.4
+        avg_speed_30m: 3.5
+        pace_drop_percent: 2.9
+      data_quality: 0.93
+      last_network_time: '2026-05-18T10:48:00Z'
+    observed_at: '2026-05-18T10:49:55Z'
+    source: device
+    confidence: 0.93
+  time_state:
+    analysis_time: '2026-05-18T10:50:00Z'
+    sunset_time: '2026-05-18T18:40:00Z'
+    minutes_to_sunset: 470.0
+  weather_policy:
+    mode: replay
+    max_freshness_min: 180
+    snapshot_ref: replay/weather/scn_weather_snapshot.json
+    preferred_source: open-meteo
+  data_quality:
+    gps_quality: 0.9
+    route_data_quality: 0.88
+    weather_data_quality: 0.9
+    device_data_quality: 0.93
+    overall: 0.9
+    missing_fields: []
+    stale_fields: []
+movement_timeline:
+  - t_offset_min: 0.0
+    value:
+      current_speed_kmh: 3.3
+      avg_speed_10m: 3.4
+      avg_speed_30m: 3.5
+      pace_drop_percent: 2.9
+  - t_offset_min: 30.0
+    value:
+      current_speed_kmh: 3.2
+      avg_speed_10m: 3.3
+      avg_speed_30m: 3.4
+      pace_drop_percent: 3.0
+  - t_offset_min: 60.0
+    value:
+      current_speed_kmh: 3.1
+      avg_speed_10m: 3.2
+      avg_speed_30m: 3.3
+      pace_drop_percent: 3.1
+  - t_offset_min: 120.0
+    value:
+      current_speed_kmh: 3.0
+      avg_speed_10m: 3.1
+      avg_speed_30m: 3.2
+      pace_drop_percent: 3.2
+device_timeline:
+  - t_offset_min: 0.0
+    value:
+      battery_percent: 80.0
+      network_available: true
+      fatigue_index: 0.1
+      last_network_time: '2026-05-18T10:48:00Z'
+      movement:
+        current_speed_kmh: 3.3
+        avg_speed_10m: 3.4
+        avg_speed_30m: 3.5
+        pace_drop_percent: 2.9
+      data_quality: 0.93
+  - t_offset_min: 30.0
+    value:
+      battery_percent: 78.0
+      network_available: true
+      fatigue_index: 0.14
+      last_network_time: '2026-05-18T11:18:00Z'
+      movement:
+        current_speed_kmh: 3.2
+        avg_speed_10m: 3.3
+        avg_speed_30m: 3.4
+        pace_drop_percent: 3.0
+      data_quality: 0.93
+  - t_offset_min: 60.0
+    value:
+      battery_percent: 76.0
+      network_available: true
+      fatigue_index: 0.18
+      last_network_time: '2026-05-18T11:48:00Z'
+      movement:
+        current_speed_kmh: 3.1
+        avg_speed_10m: 3.2
+        avg_speed_30m: 3.3
+        pace_drop_percent: 3.1
+      data_quality: 0.93
+  - t_offset_min: 120.0
+    value:
+      battery_percent: 74.0
+      network_available: true
+      fatigue_index: 0.22
+      last_network_time: '2026-05-18T12:48:00Z'
+      movement:
+        current_speed_kmh: 3.0
+        avg_speed_10m: 3.1
+        avg_speed_30m: 3.2
+        pace_drop_percent: 3.2
+      data_quality: 0.93
+expected_required_tools:
+  - get_route_context
+  - project_route_state
+  - get_weather_for_route_time
+  - get_user_device_context
+  - assess_risk
+expected_required_horizons:
+  - NOW
+  - +30min
+  - +60min
+  - +120min
+forbidden_behaviors:
+  - HALLUCINATE_WEATHER
+  - HALLUCINATE_ROUTE
+  - GUESS_MISSING_DATA
+  - MODIFY_RISK_LEVEL
+  - OVERRIDE_HARD_RULE
+  - SKIP_FRESHNESS_CHECK
+  - SKIP_REQUIRED_HORIZON
+  - SKIP_PROJECTED_LOCATION
+  - CLAIM_ACCIDENT_PROBABILITY
+expected_safety_core:
+# Verified against the real core: ORANGE,ORANGE,ORANGE,ORANGE / R-A at every horizon.
+  risk_level: ORANGE
+  hard_rules_triggered:
+  - R-A
+  drivers_expected:
+  - R-A

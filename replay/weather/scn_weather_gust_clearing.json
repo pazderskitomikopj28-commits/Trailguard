@@ -1,0 +1,59 @@
+{
+  "synthetic": true,
+  "source": "synthetic weather fixture, not live data",
+  "note": "SYNTHETIC COMPETITION DEMO FIXTURE -- not Open-Meteo historical data and not a real forecast. Hand-authored TrailGuard replay asset for Phase 5 benchmark scenario B08 (a gust band that clears). The gusts are NON-MONOTONE on purpose: 21 km/h at 11:00, a 49 km/h band at 12:00, then back down to 22 km/h at 13:00 and 20 km/h at 14:00. With the scenario's analysis clock at 11:40 the hiker's projected arrivals read the 49 km/h row at NOW and at +30 and read the calm rows at +60 and +120, so the R-C gust threshold (45 km/h in the frozen rule pack) is crossed at exactly two horizons and cleared at the other two. A run that carries the gust band forward to +60 or +120 contradicts the core; a run that ignores it at NOW or +30 contradicts it there. Values are invented. precipitation_probability arrives in percent ('%' in hourly_units, exactly as open-meteo reports it) and must be divided by 100 to obtain the 0..1 probability the TrailGuard schemas use.",
+  "scenario_date": "2026-05-18",
+  "latitude": 46.081,
+  "longitude": 7.772,
+  "elevation": 1379,
+  "generationtime_ms": 0.31,
+  "timezone": "UTC",
+  "timezone_abbreviation": "UTC",
+  "utc_offset_seconds": 0,
+  "generated_at": "2026-05-18T11:00:00Z",
+  "hourly_units": {
+    "time": "iso8601",
+    "temperature_2m": "\u00b0C",
+    "precipitation_probability": "%",
+    "wind_speed_10m": "km/h",
+    "wind_gusts_10m": "km/h"
+  },
+  "hourly": {
+    "time": [
+      "2026-05-18T11:00Z",
+      "2026-05-18T12:00Z",
+      "2026-05-18T13:00Z",
+      "2026-05-18T14:00Z"
+    ],
+    "temperature_2m": [
+      15.4,
+      14.9,
+      14.2,
+      13.6
+    ],
+    "precipitation_probability": [
+      8,
+      18,
+      12,
+      9
+    ],
+    "wind_speed_10m": [
+      11.0,
+      16.4,
+      12.1,
+      10.4
+    ],
+    "wind_gusts_10m": [
+      21.0,
+      49.0,
+      22.0,
+      20.0
+    ],
+    "weather_code": [
+      1,
+      3,
+      2,
+      1
+    ]
+  }
+}

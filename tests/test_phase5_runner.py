@@ -167,7 +167,12 @@ def test_a_run_id_is_never_overwritten_by_a_resumed_batch(scoring_dir, monkeypat
 
 
 def test_replacing_a_run_is_visible_as_a_replacement(scoring_dir, monkeypatch) -> None:
-    """A correction gets a new id and says what it replaced -- it never edits."""
+    """A correction gets a new id and says what it replaced -- it never edits.
+
+    Kept as the pair of the FileExistsError test below, so the two halves of the
+    rule are pinned together: a run id is never rewritten, and a correction is
+    never silent.
+    """
     _passing_preflight(monkeypatch)
     from evals.phase5.runner import load_scenario_for_benchmark
 
@@ -181,6 +186,7 @@ def test_replacing_a_run_is_visible_as_a_replacement(scoring_dir, monkeypatch) -
     )
     first.payload["scored"] = True
     first.save()
+    before = (scoring_dir / "S01_clear_day__without_skill__rep1.json").read_text()
 
     with pytest.raises(FileExistsError):
         run_one(
@@ -200,11 +206,12 @@ def test_replacing_a_run_is_visible_as_a_replacement(scoring_dir, monkeypatch) -
         replaces="S01_clear_day__without_skill__rep1",
         reason="the first record holds a stale answer; recorded, not overwritten",
     )
-    assert replacement.payload["replaces"] == "S01_clear_day__without_skill__rep1"
-    assert "stale answer" in replacement.payload["reason"]
-    assert (scoring_dir / "S01_clear_day__without_skill__rep1.json").read_text().find(
-        "YELLOW"
-    ), "the record it replaced is still what it was"
+    replacement.payload["scored"] = True
+    replacement.save()
+    assert replacement.path.name.endswith("__r2.json")
+    assert (scoring_dir / "S01_clear_day__without_skill__rep1.json").read_text() == before, (
+        "the record it replaced is still exactly what it was"
+    )
 
 
 # ----------------------------------------------------------- infra accidents
@@ -316,6 +323,137 @@ def test_the_wrapper_counts_a_call_the_trace_cannot_see() -> None:
 
 
 # ---------------------------------------------------------------- the identity
+
+
+def test_the_wrapper_forwards_the_identity_it_is_wrapping() -> None:
+    """A benchmark whose evidence says "RecordingProvider" has lost its own model.
+
+    The harness reads ``provider.name`` and ``provider.model`` to label the trace,
+    so a wrapper that answered for them would stamp every run in the batch with its
+    own class name -- and the one field a reader must be able to trust is the field
+    that says which model ran.
+    """
+    class Named(FakeProvider):
+        def __init__(self):
+            super().__init__()
+            self.model = "qwen3-vl-30b-a3b"
+
+        @property
+        def name(self) -> str:
+            return "local"
+
+    recording = RecordingProvider(Named())
+    assert recording.name == "local"
+    assert recording.model == "qwen3-vl-30b-a3b"
+
+
+def test_the_wrapper_leaves_a_missing_model_string_as_a_gap() -> None:
+    """Papering over a gap with the provider id is what the harness refuses to do."""
+    recording = RecordingProvider(FakeProvider())
+    assert recording.model is None
+    assert recording.name == "fake"
+
+
+def test_a_replacement_gets_its_own_id_and_names_what_it_superseded(scoring_dir) -> None:
+    from evals.phase5.runner import load_scenario_for_benchmark
+
+    _, scenario = load_scenario_for_benchmark("S01_clear_day")
+    first = run_one(
+        scenario=scenario,
+        model_provider=FakeProvider(answer="**NOW** Risk Level: YELLOW."),
+        skill_enabled=False,
+        repetition=1,
+        output_dir=scoring_dir,
+    )
+    first.payload["scored"] = True
+    first.save()
+
+    replacement = run_one(
+        scenario=scenario,
+        model_provider=FakeProvider(answer=ANSWER),
+        skill_enabled=False,
+        repetition=1,
+        output_dir=scoring_dir,
+        replaces="S01_clear_day__without_skill__rep1",
+        reason="the first record's model identity was mislabelled by the wrapper",
+    )
+    assert replacement.path.name == "S01_clear_day__without_skill__rep1__r2.json"
+    assert replacement.payload["replaces"] == "S01_clear_day__without_skill__rep1"
+    assert "mislabelled" in replacement.payload["reason"]
+    # Both records are still on disk, and the first one is byte-for-byte what it was.
+    assert (scoring_dir / "S01_clear_day__without_skill__rep1.json").is_file()
+    assert json.loads((scoring_dir / "S01_clear_day__without_skill__rep1.json").read_text())[
+        "final_response"
+    ] == "**NOW** Risk Level: YELLOW."
+
+
+def test_a_replacement_must_give_a_reason(scoring_dir) -> None:
+    from evals.phase5.runner import load_scenario_for_benchmark
+
+    _, scenario = load_scenario_for_benchmark("S01_clear_day")
+    first = run_one(
+        scenario=scenario, model_provider=FakeProvider(), skill_enabled=False,
+        repetition=1, output_dir=scoring_dir,
+    )
+    first.payload["scored"] = True
+    first.save()
+    with pytest.raises(ValueError, match="why"):
+        run_one(
+            scenario=scenario, model_provider=FakeProvider(), skill_enabled=False,
+            repetition=1, output_dir=scoring_dir, replaces="S01_clear_day__without_skill__rep1",
+        )
+
+
+def test_a_replacement_must_name_a_record_that_exists(scoring_dir) -> None:
+    from evals.phase5.runner import load_scenario_for_benchmark
+
+    _, scenario = load_scenario_for_benchmark("S01_clear_day")
+    with pytest.raises(FileNotFoundError):
+        run_one(
+            scenario=scenario, model_provider=FakeProvider(), skill_enabled=False,
+            repetition=1, output_dir=scoring_dir,
+            replaces="a_run_that_never_happened", reason="typo",
+        )
+
+
+def test_a_superseded_record_is_excluded_from_the_scores_but_kept(tmp_path) -> None:
+    """The whole reason `replaces` exists: a correction is not two answers."""
+    from evals.phase5.evaluate import load_runs
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    original = {
+        "run_id": "S01_clear_day__without_skill__rep1",
+        "scenario_id": "S01_clear_day",
+        "condition": "without_skill",
+        "repetition": 1,
+        "scored": True,
+    }
+    replacement = dict(original, run_id="S01_clear_day__without_skill__rep1__r2",
+                       replaces="S01_clear_day__without_skill__rep1")
+    (raw / f"{original['run_id']}.json").write_text(json.dumps(original))
+    (raw / f"{replacement['run_id']}.json").write_text(json.dumps(replacement))
+
+    runs = load_runs(raw)
+    assert {run["run_id"] for run in runs} == {
+        "S01_clear_day__without_skill__rep1", "S01_clear_day__without_skill__rep1__r2",
+    }, "both records are preserved"
+    superseded = [run for run in runs if run["run_id"] == "S01_clear_day__without_skill__rep1"][0]
+    assert superseded["superseded_by"] == "S01_clear_day__without_skill__rep1__r2"
+
+
+def test_the_batch_counts_a_run_done_when_its_replacement_exists(scoring_dir, monkeypatch) -> None:
+    """Resuming after a correction must not re-run the pair slot."""
+    _passing_preflight(monkeypatch)
+    (scoring_dir).mkdir(parents=True)
+    (scoring_dir / "S01_clear_day__without_skill__rep1.json").write_text("{}")
+    (scoring_dir / "S01_clear_day__without_skill__rep1__r2.json").write_text("{}")
+
+    provider = FakeProvider()
+    log: list[str] = []
+    assert run_benchmark(provider, confirm=True, plan=_one_plan(), log=log.append) == 0
+    assert provider.calls == 0
+    assert any("superseded by" in line for line in log)
 
 
 def test_the_run_id_names_the_scenario_the_condition_and_the_repetition() -> None:

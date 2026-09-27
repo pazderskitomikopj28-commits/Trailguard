@@ -106,6 +106,22 @@ class RecordingProvider:
         self.turns: list[ProviderTurn] = []
         self.provider_error: ProviderErrorRecord | None = None
 
+    # -- identity, forwarded ---------------------------------------------------
+    #: The harness reads ``provider.name`` and ``provider.model`` to label the
+    #: trace, and a wrapper that answered for them would stamp every run in the
+    #: benchmark with its own class name -- "RecordingProvider:model-unset" --
+    #: which is exactly the identity a reader must be able to trust. Both are
+    #: forwarded. When the wrapped provider reports no model string the gap stays
+    #: a gap, because the harness records it as one.
+
+    @property
+    def name(self) -> str:
+        return str(self.inner.name)
+
+    @property
+    def model(self) -> str | None:
+        return getattr(self.inner, "model", None)
+
     # -- the ModelProvider surface, unchanged in behaviour ---------------------
     def generate(
         self,
@@ -197,17 +213,28 @@ def run_one(
     """
     from trailguard.agent.harness import run_agent
 
+    directory = Path(output_dir) if output_dir is not None else RAW_DIR
     condition = "with_skill" if skill_enabled else "without_skill"
     recording = RecordingProvider(model_provider)
     registry = scenario_registry(scenario)
 
     run_id = run_id_for(scenario.scenario_id, condition, repetition)
-    target = (Path(output_dir) if output_dir is not None else RAW_DIR) / f"{run_id}.json"
-    if target.exists() and replaces is None:
-        raise FileExistsError(
-            f"{target} already exists. A run id is never overwritten: pass "
-            f"replaces={run_id!r} and a reason to record a replacement."
-        )
+    if replaces is None:
+        target = directory / f"{run_id}.json"
+        if target.exists():
+            raise FileExistsError(
+                f"{target} already exists. A run id is never overwritten. To correct it, "
+                "call run_one(replaces=<the run id it replaces>, reason='why') and a new "
+                "record with its own id is written beside it."
+            )
+    else:
+        # A replacement is a NEW record with its OWN id -- <run_id>__r2, __r3 --
+        # naming the record it supersedes. The superseded record is left exactly
+        # as it was written, so a reader who already saw the old number can see
+        # what changed and why, and the evaluator excludes only the record that
+        # was named as superseded. Overwriting in place would make a correction
+        # invisible, which is what this is designed to prevent.
+        target = _next_replacement_path(directory, run_id, replaces)
 
     started = datetime.now(timezone.utc)
     result = run_agent(
@@ -259,10 +286,31 @@ def run_one(
         "trace": json.loads(trace.model_dump_json()),
     }
     if replaces is not None:
+        if not reason:
+            raise ValueError(
+                f"a replacement for {replaces!r} must record why it replaced it; a silent "
+                "correction is indistinguishable from a rewrote result"
+            )
         payload["replaces"] = replaces
         payload["reason"] = reason
 
     return RunRecord(payload=payload, path=target)
+
+
+def _next_replacement_path(directory: Path, run_id: str, replaces: str) -> Path:
+    """The next free ``<run_id>__rN.json`` beside the record being superseded.
+
+    ``replaces`` must name a record that exists: replacing something that was
+    never written is a caller error, not a new fact.
+    """
+    if not (directory / f"{replaces}.json").is_file():
+        raise FileNotFoundError(
+            f"{replaces!r} is not a record in {directory}; a replacement must name one"
+        )
+    index = 2
+    while (directory / f"{run_id}__r{index}.json").is_file():
+        index += 1
+    return directory / f"{run_id}__r{index}.json"
 
 
 # --------------------------------------------------------------------- the batch
@@ -345,9 +393,12 @@ def run_benchmark(
     skipped = 0
     for index, (scenario_id, condition, repetition) in enumerate(queue, start=1):
         run_id = run_id_for(scenario_id, condition, repetition)
-        if (RAW_DIR / f"{run_id}.json").exists():
+        preserved = existing_records(run_id)
+        if preserved:
             skipped += 1
-            out(f"[{index}/{len(queue)}] {run_id}: already preserved, skipping")
+            newest = preserved[-1].name
+            note = "" if newest == f"{run_id}.json" else f" (superseded by {newest})"
+            out(f"[{index}/{len(queue)}] {run_id}: already preserved, skipping{note}")
             continue
 
         _, scenario = load_scenario_for_benchmark(scenario_id)
@@ -362,7 +413,8 @@ def run_benchmark(
         done += 1
         payload = record.payload
         out(
-            f"[{index}/{len(queue)}] {run_id}: stop={payload['stop_reason']} "
+            f"[{index}/{len(queue)}] {payload['run_id']}: "
+            f"model={payload['model_name']} stop={payload['stop_reason']} "
             f"steps={payload['steps']} answer={len(payload['final_response'])} chars "
             f"tools={payload['attempted_tool_calls']}/{len(payload['trace']['tool_calls'])} ok "
             f"wall={payload['wall_clock_seconds']}s"
@@ -388,6 +440,17 @@ def run_benchmark(
     out(f"Batch finished: {done} run(s) newly scored, {skipped} already preserved, "
         f"{len(list(RAW_DIR.glob('*.json')))} record(s) on disk.")
     return 0
+
+
+def existing_records(run_id: str, directory: Path | None = None) -> list[Path]:
+    """Every generation of one run id, oldest first.
+
+    ``<run_id>.json`` plus any ``<run_id>__rN.json`` replacements. A batch that
+    sees any of them treats the pair slot as filled, because the newest record is
+    the current one -- but it does not delete the others.
+    """
+    store = Path(directory) if directory is not None else RAW_DIR
+    return sorted(store.glob(f"{run_id}*.json"))
 
 
 def is_context_limit_error(message: str) -> bool:

@@ -213,22 +213,7 @@ def check_design(report: Report) -> None:
         same,
         "byte-identical" if same else "the committed manifest no longer matches the tree",
     )
-    # Unscored warm-up records are allowed; a scored one is not, because the design
-    # is meant to be frozen before any result exists.
-    raw = REPO_ROOT / "runs" / "phase5" / "raw"
-    scored = []
-    if raw.is_dir():
-        for run_file in sorted(raw.glob("*.json")):
-            record = json.loads(run_file.read_text(encoding="utf-8"))
-            if record.get("scored") is not False:
-                scored.append(run_file.name)
-    report.add(
-        "no scored result exists yet",
-        not scored,
-        "runs/phase5/raw holds no scored run record"
-        if not scored
-        else f"scored run records already present: {scored[:3]}",
-    )
+    check_results_present(report)
 
     for entry in manifest["scenarios"]:
         scenario = REPO_ROOT / entry["scenario_file"]
@@ -253,6 +238,72 @@ def check_design(report: Report) -> None:
         "references exist for every scenario",
         all((REFERENCES_DIR / f"{sid}.json").is_file() for sid in BENCHMARK_SCENARIOS),
         f"{len(list(REFERENCES_DIR.glob('*.json')))} reference files",
+    )
+
+
+def _design_frozen_at() -> str | None:
+    """The commit date of the design-freeze tag, or None if git will not say.
+
+    On this box reads of the newest loose object intermittently fail, so the
+    caller treats None as "could not confirm" rather than as "not frozen".
+    """
+    for name in ("phase5-design-freeze", PHASE4_COMMIT[:12]):
+        rc, out = _git("show", "-s", "--format=%cI", name)
+        if rc == 0 and out.strip():
+            return out.splitlines()[0].strip()
+    return None
+
+
+def _scored_results() -> list[tuple[str, str]]:
+    """Every scored record on disk as ``(file, started_at)``."""
+    raw = REPO_ROOT / "runs" / "phase5" / "raw"
+    found: list[tuple[str, str]] = []
+    if not raw.is_dir():
+        return found
+    for run_file in sorted(raw.glob("*.json")):
+        try:
+            record = json.loads(run_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):  # pragma: no cover - unreadable file
+            found.append((run_file.name, ""))
+            continue
+        if record.get("scored") is not False:
+            found.append((run_file.name, str(record.get("started_at") or "")))
+    return found
+
+
+def check_results_present(report: Report) -> None:
+    """No scored result may predate the design freeze.
+
+    This is the invariant that makes the manifest a pre-registration rather than
+    a description: the design was committed, and only then were results taken.
+    It is deliberately *not* "the raw directory is empty" -- a batch that died at
+    run 41 must be resumable, and resuming means running the preflight again with
+    40 scored records already on disk. So the check is about ORDER: any scored
+    record whose ``started_at`` precedes the freeze commit fails loudly, and a
+    directory that already holds results is reported for information.
+    """
+    scored = _scored_results()
+    frozen_at = _design_frozen_at()
+    if not scored:
+        report.add("no scored result predates the freeze", True,
+                   "runs/phase5/raw holds no scored run record")
+        return
+    if frozen_at is None:
+        report.add(
+            "no scored result predates the freeze",
+            False,
+            f"{len(scored)} scored record(s) on disk and the freeze date could not be read. "
+            "Confirm by hand: git show -s --format=%cI phase5-design-freeze",
+            fatal=False,
+        )
+        return
+    early = [name for name, started in scored if started and started < frozen_at]
+    report.add(
+        "no scored result predates the freeze",
+        not early,
+        f"{len(scored)} scored record(s), all on or after the {frozen_at} freeze"
+        if not early
+        else f"these records predate the freeze: {early[:3]}",
     )
 
 

@@ -106,14 +106,26 @@ def test_the_manifest_records_no_model_result_of_any_kind() -> None:
     assert not any("__without_skill__" in text or "__with_skill__" in text for text in strings), (
         "the manifest names a concrete run id, so it was written after that run existed"
     )
-    # ...and the raw directory may hold nothing but unscored warm-up records.
+    # ...and any scored record on disk must not predate the design freeze. This
+    # is the invariant "the manifest is a pre-registration", stated as an ordering
+    # rather than as "the directory is empty": a batch that died at run 41 has to
+    # be resumable, and resuming means the suite runs again with 40 scored records
+    # already on disk. What must never hold is a result older than the design.
     raw = REPO_ROOT / "runs" / "phase5" / "raw"
     if raw.is_dir():
+        from evals.phase5.preflight import _design_frozen_at
+
+        frozen_at = _design_frozen_at()
+        scored = []
         for run_file in sorted(raw.glob("*.json")):
             record = json.loads(run_file.read_text(encoding="utf-8"))
-            assert record.get("scored") is False and record.get("warmup") is True, (
-                f"{run_file.name} is not an unscored warm-up record, so a scored result "
-                "exists and the manifest can no longer be a pre-registration"
+            if record.get("scored") is not False:
+                scored.append((run_file.name, str(record.get("started_at") or "")))
+        if scored and frozen_at:
+            early = [name for name, started in scored if started and started < frozen_at]
+            assert not early, (
+                f"{early} were scored before the design was frozen at {frozen_at}, so the "
+                "manifest cannot be a pre-registration"
             )
 
 

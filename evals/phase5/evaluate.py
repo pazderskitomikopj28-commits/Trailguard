@@ -576,13 +576,22 @@ def score_run(
             f"infra accident ({provider_class}); recorded, excluded from skill metrics, "
             "never scored as a skill failure"
         )
+    elif run.get("superseded_by"):
+        exclusion = (
+            f"superseded by {run['superseded_by']}; preserved, and excluded from every "
+            "aggregate so a correction cannot become two answers to one pair"
+        )
 
     return RunScore(
         run_id=run["run_id"],
         scenario_id=run["scenario_id"],
         condition=run["condition"],
         repetition=run["repetition"],
-        scored=(include_unscored or bool(run.get("scored", True))) and not infra_accident,
+        scored=(
+            (include_unscored or bool(run.get("scored", True)))
+            and not infra_accident
+            and not run.get("superseded_by")
+        ),
         exclusion_reason=exclusion,
         values=values,
         evidence={
@@ -622,10 +631,25 @@ def claimed_and_covered(claim: ClaimReport, covered: Sequence[str]) -> list[str]
 
 
 def load_runs(raw_dir: Path = RAW_DIR) -> list[dict[str, Any]]:
-    runs = []
+    """Every preserved record, in run-id order, with the superseded ones marked.
+
+    A record another record names in its ``replaces`` field is *kept* -- it is
+    evidence of what was measured before, and deleting it would hide the
+    correction -- but it carries ``superseded_by`` so aggregation can leave it
+    out without editing it. This is the only thing standing between "a corrected
+    run" and "two different answers to the same pair slot".
+    """
+    runs: list[dict[str, Any]] = []
+    records: dict[str, dict[str, Any]] = {}
     for path in sorted(Path(raw_dir).glob("*.json")):
-        runs.append(json.loads(path.read_text(encoding="utf-8")))
-    return runs
+        record = json.loads(path.read_text(encoding="utf-8"))
+        records[record["run_id"]] = record
+        runs.append(record)
+    for record in runs:
+        replaces = record.get("replaces")
+        if replaces and replaces in records:
+            records[replaces]["superseded_by"] = record["run_id"]
+    return sorted(runs, key=lambda record: record["run_id"])
 
 
 def score_all(

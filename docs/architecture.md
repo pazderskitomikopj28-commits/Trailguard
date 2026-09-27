@@ -142,7 +142,23 @@ dgx-spark-hackathon/
 │   ├── metrics.py                    frozen metric names + MetricResult
 │   ├── runner.py                     run_scenario() -> EvalRunResult     (Phase 5)
 │   ├── compare.py                    compare_runs() + fairness preconditions
-│   └── report.py                     BenchmarkReport, DgxSparkEvidence
+│   ├── report.py                     BenchmarkReport, DgxSparkEvidence
+│   └── phase5/                       the Phase 5 fair-skill benchmark
+│       ├── manifest.py               build_manifest() -> benchmark_manifest.json:
+│       │                             the PRE-REGISTRATION (scenarios, references,
+│       │                             tools, sampling, repetitions, run order)
+│       ├── references.py             coverage -> scenarios -> deterministic
+│       │                             references, generated not judged
+│       ├── metrics.py                18 frozen metric definitions (numerator,
+│       │                             denominator, source, direction, unit, caveat)
+│       ├── preflight.py              the gate: 30+ checks, PREFLIGHT PASS /
+│       │                             ABORT BEFORE SCORED RUN
+│       ├── runner.py                 RecordingProvider + run_one() +
+│       │                             run_benchmark(): append-only runs/phase5/raw/
+│       ├── evaluate.py               score a preserved run against a reference ->
+│       │                             summary.csv / paired_results.csv /
+│       │                             manual_review.csv / metrics.json
+│       └── benchmark_manifest.json   committed, byte-stable, contains no result
 │
 ├── scenarios/                        synthetic scenario dataset (spec 13)
 │   ├── baseline/ edge_cases/ compound/
@@ -156,6 +172,10 @@ dgx-spark-hackathon/
 │        movement/device timelines live inline in each scenario YAML -- see
 │        replay/README.md section 1)
 ├── runs/phase3/                      live evidence traces -- GIT-IGNORED, never committed
+├── runs/phase5/                      Phase 5 raw runs + aggregates -- GIT-IGNORED:
+│                                     raw/<run_id>.json is append-only and never
+│                                     overwritten; summary.csv / paired_results.csv /
+│                                     manual_review.csv / metrics.json are derived
 ├── scripts/                          test_live_weather.py and test_stepfun_agent.py -- the
 │                                     only paths that may open a socket; never collected by
 │                                     pytest (spec 13, 14)
@@ -315,7 +335,17 @@ no parsing of the skill text, no tool-call echo as a tool result, and no Qwen wi
   (spec 14, 17).
 * Live traces are evidence, not source. A run writes to `runs/phase3/`, which is in
   `.gitignore`: a trace can quote a model answer, and a directory that grows with every
-  live run has no business in version control (spec 13, 24).
+  live run has no business in version control (spec 13, 24). `runs/phase5/` is under the
+  same policy: raw runs are the benchmark's evidence and are never overwritten, but a
+  directory that grows with every scored model call has no business in version control
+  either.
+* **The benchmark measures the harness it was given.** Phase 5 does not fix Phase 4's
+  known defects (F-1 malformed tool-call batch, F-2 context limit, F-3 denial read as
+  claim) before or during the scored runs, because the model's behaviour on a broken
+  harness is part of what is measured -- and repairing mid-run would make the numbers
+  incomparable to Phase 4's. The measurement path contains no client-side JSON repair,
+  no retry-until-pass and no regex extraction of tool arguments: a malformed batch is
+  counted as a structured tool-call failure and left as one.
 * A live failure is never answered by a replay fixture. Every failure raises a
   subclass of `WeatherProviderError` naming what was attempted (spec 11, 17).
 * No CUDA, no GPU and no Numba anywhere in the repository (spec 24).

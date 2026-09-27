@@ -669,8 +669,21 @@ def score_all(
     ]
 
 
-def write_summary(scores: Sequence[RunScore], path: Path = SUMMARY_PATH) -> Path:
+def _out(path: Path | None, configured: Path) -> Path:
+    """Resolve an output path at call time, not at definition time.
+
+    A ``path: Path = SUMMARY_PATH`` default is bound when the function object is
+    created, so reassigning the module attribute afterwards changes nothing and
+    every caller silently writes to the original location. That is precisely the
+    trap ``run_one(output_dir=RAW_DIR)`` already fell into once; the writers here
+    take ``None`` and look the constant up on each call.
+    """
+    return Path(path) if path is not None else Path(configured)
+
+
+def write_summary(scores: Sequence[RunScore], path: Path | None = None) -> Path:
     """One row per run: every metric, plus whether the run was scored."""
+    path = _out(path, SUMMARY_PATH)
     columns = ["run_id", "scenario_id", "condition", "repetition", "scored"]
     if any(s.exclusion_reason for s in scores):
         columns.append("exclusion_reason")
@@ -684,10 +697,17 @@ def write_summary(scores: Sequence[RunScore], path: Path = SUMMARY_PATH) -> Path
     return path
 
 
-def write_paired(scores: Sequence[RunScore], path: Path = PAIRED_PATH) -> Path:
-    """One row per (scenario, repetition): the baseline and treatment side by side."""
+def write_paired(scores: Sequence[RunScore], path: Path | None = None) -> Path:
+    """One row per (scenario, repetition): the baseline and treatment side by side.
+
+    Only *scored* runs claim a pair slot. A superseded or infra-excluded record
+    stays in the row for transparency, but it must not be the one a comparison
+    reads -- and since a replacement sorts after the record it replaces only by
+    luck of the naming scheme, that has to be explicit rather than incidental.
+    """
+    path = _out(path, PAIRED_PATH)
     by_key: dict[tuple[str, int, str], RunScore] = {
-        (s.scenario_id, s.repetition, s.condition): s for s in scores
+        (s.scenario_id, s.repetition, s.condition): s for s in scores if s.scored
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
@@ -719,8 +739,9 @@ def _value(score: RunScore | None, key: str) -> float | None:
     return None if score is None else score.values.get(key)
 
 
-def write_manual_review(scores: Sequence[RunScore], path: Path = MANUAL_REVIEW_PATH) -> Path:
+def write_manual_review(scores: Sequence[RunScore], path: Path | None = None) -> Path:
     """The ambiguity queue. Original rows are never edited; decisions are appended."""
+    path = _out(path, MANUAL_REVIEW_PATH)
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = path.read_text(encoding="utf-8") if path.is_file() else ""
     known: set[str] = set()
@@ -745,9 +766,12 @@ def write_manual_review(scores: Sequence[RunScore], path: Path = MANUAL_REVIEW_P
 
 
 def write_metrics_json(
-    scores: Sequence[RunScore], path: Path = METRICS_PATH
+    scores: Sequence[RunScore],
+    path: Path | None = None,
+    raw_dir: Path | None = None,
 ) -> Path:
     """Metrics plus the counts that keep the report honest."""
+    path = _out(path, METRICS_PATH)
     scored = [s for s in scores if s.scored]
     excluded = [s for s in scores if not s.scored]
     per_metric: dict[str, Any] = {}
@@ -788,7 +812,7 @@ def write_metrics_json(
         "exclusions": [
             {"run_id": s.run_id, "reason": s.exclusion_reason} for s in excluded
         ],
-        "raw_artifacts": sorted(p.name for p in RAW_DIR.glob("*.json")),
+        "raw_artifacts": sorted(p.name for p in (raw_dir or RAW_DIR).glob("*.json")),
         "metrics": per_metric,
         "flags": [row for s in scores for row in s.flags],
         "no_composite_score": True,
@@ -815,7 +839,7 @@ def evaluate(
     write_summary(scores)
     write_paired(scores)
     write_manual_review(scores)
-    write_metrics_json(scores)
+    write_metrics_json(scores, raw_dir=raw_dir)
     return scores
 
 

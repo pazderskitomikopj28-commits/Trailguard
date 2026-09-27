@@ -387,3 +387,138 @@ def test_the_warmup_answer_shapes_are_handled_as_observed() -> None:
     )
     claim = scan_answer(real_report)
     assert claim.levels == {"NOW": "GREEN"}
+
+
+# ------------------------------------------------------- the aggregate, end to end
+
+
+def _record(run_id, scenario_id, condition, repetition, *, scored=True,
+            answer=None, replaces=None):
+    return {
+        "run_id": run_id,
+        "scenario_id": scenario_id,
+        "condition": condition,
+        "repetition": repetition,
+        "scored": scored,
+        **({"replaces": replaces} if replaces else {}),
+        "stop_reason": "completed",
+        "steps": 4,
+        "final_response": answer or "**NOW** Risk Level: GREEN.",
+        "attempted_tool_calls": 1,
+        "attempted_tool_names": ["assess_risk"],
+        "unknown_tool_calls": 0,
+        "provider_error": None,
+        "trace": {
+            "tool_calls": [{"tool": "assess_risk", "status": "ok", "error": None,
+                            "arguments": {}}],
+            "horizons_checked": ["NOW"],
+            "core_risk_level": "GREEN",
+            "triggered_rules": [],
+            "risk_drivers": [],
+        },
+    }
+
+
+def _write_raw(directory, records):
+    directory.mkdir(parents=True, exist_ok=True)
+    for record in records:
+        (directory / f"{record['run_id']}.json").write_text(
+            json.dumps(record, indent=2), encoding="utf-8"
+        )
+
+
+def test_the_aggregates_are_written_for_a_fabricated_pair(tmp_path, monkeypatch) -> None:
+    """Insurance for step 13: after five hours of runs, the writer must not crash.
+
+    Written on synthetic records against a scratch directory, so it never touches
+    the real result store.
+    """
+    import csv as _csv
+
+    from evals.phase5 import evaluate as module
+
+    raw = tmp_path / "raw"
+    out = tmp_path / "out"
+    not_scored = tmp_path / "warmup"
+    _write_raw(raw, [
+        _record("S01_clear_day__without_skill__rep1", "S01_clear_day", "without_skill", 1),
+        _record("S01_clear_day__with_skill__rep1", "S01_clear_day", "with_skill", 1),
+    ])
+
+    monkeypatch.setattr(module, "SUMMARY_PATH", out / "summary.csv")
+    monkeypatch.setattr(module, "PAIRED_PATH", out / "paired_results.csv")
+    monkeypatch.setattr(module, "MANUAL_REVIEW_PATH", out / "manual_review.csv")
+    monkeypatch.setattr(module, "METRICS_PATH", out / "metrics.json")
+
+    scores = module.evaluate(raw_dir=raw)
+    assert [path.name for path in sorted(out.glob("*"))] == [
+        "manual_review.csv", "metrics.json", "paired_results.csv", "summary.csv",
+    ]
+
+    paired = list(_csv.DictReader((out / "paired_results.csv").read_text().splitlines()))
+    row = next(r for r in paired if r["metric"] == "M1_completion_rate")
+    assert row["without_skill"] == "1.000000" and row["with_skill"] == "1.000000"
+    assert row["comparison"] == "compared"
+
+    metrics = json.loads((out / "metrics.json").read_text())
+    assert metrics["runs_scored"] == 2 and metrics["runs_total"] == 2
+    assert metrics["no_composite_score"] is True
+    assert metrics["metrics"]["M1_completion_rate"]["n_paired_deltas"] == 1
+    assert metrics["raw_artifacts"] == sorted(p.name for p in raw.glob("*.json"))
+
+
+def test_a_superseded_record_does_not_claim_the_pair_slot(tmp_path, monkeypatch) -> None:
+    """Two answers to one pair slot is the failure `replaces` exists to prevent."""
+    import csv as _csv
+
+    from evals.phase5 import evaluate as module
+
+    raw = tmp_path / "raw"
+    out = tmp_path / "out"
+    _write_raw(raw, [
+        _record("S01_clear_day__without_skill__rep1", "S01_clear_day", "without_skill", 1,
+                answer="**NOW** Risk Level: RED."),
+        _record("S01_clear_day__without_skill__rep1__r2", "S01_clear_day", "without_skill", 1,
+                replaces="S01_clear_day__without_skill__rep1"),
+        _record("S01_clear_day__with_skill__rep1", "S01_clear_day", "with_skill", 1),
+    ])
+
+    monkeypatch.setattr(module, "SUMMARY_PATH", out / "summary.csv")
+    monkeypatch.setattr(module, "PAIRED_PATH", out / "paired_results.csv")
+    monkeypatch.setattr(module, "MANUAL_REVIEW_PATH", out / "manual_review.csv")
+    monkeypatch.setattr(module, "METRICS_PATH", out / "metrics.json")
+
+    scores = module.evaluate(raw_dir=raw)
+    excluded = {s.run_id: s.exclusion_reason for s in scores if not s.scored}
+    assert "S01_clear_day__without_skill__rep1" in excluded
+    assert "superseded by" in excluded["S01_clear_day__without_skill__rep1"]
+
+    paired = list(_csv.DictReader((out / "paired_results.csv").read_text().splitlines()))
+    # The RED claim belonged to the superseded record; the pair must read the r2 one.
+    row = next(r for r in paired if r["metric"] == "M6_risk_level_exact_match")
+    assert row["without_skill"] == "1.000000", row
+    assert row["comparison"] == "compared"
+
+
+def test_an_incomplete_pair_is_reported_as_incomplete_not_as_zero(tmp_path, monkeypatch) -> None:
+    """A missing half is a hole in the evidence, never a score of zero."""
+    import csv as _csv
+
+    from evals.phase5 import evaluate as module
+
+    raw = tmp_path / "raw"
+    out = tmp_path / "out"
+    _write_raw(raw, [
+        _record("S01_clear_day__without_skill__rep1", "S01_clear_day", "without_skill", 1),
+    ])
+    monkeypatch.setattr(module, "SUMMARY_PATH", out / "summary.csv")
+    monkeypatch.setattr(module, "PAIRED_PATH", out / "paired_results.csv")
+    monkeypatch.setattr(module, "MANUAL_REVIEW_PATH", out / "manual_review.csv")
+    monkeypatch.setattr(module, "METRICS_PATH", out / "metrics.json")
+
+    module.evaluate(raw_dir=raw)
+    paired = list(_csv.DictReader((out / "paired_results.csv").read_text().splitlines()))
+    row = next(r for r in paired if r["metric"] == "M1_completion_rate")
+    assert row["without_skill"] == "1.000000"
+    assert row["with_skill"] == ""
+    assert row["comparison"] == "pair_incomplete"

@@ -581,6 +581,14 @@ def score_run(
             f"superseded by {run['superseded_by']}; preserved, and excluded from every "
             "aggregate so a correction cannot become two answers to one pair"
         )
+    elif not run.get("scored", True):
+        # A warm-up run is deliberate and uncounted, but "deliberate" is still a
+        # reason: metrics.json lists every excluded run with its cause, and an
+        # entry with a blank one reads as an oversight rather than a decision.
+        exclusion = (
+            f"recorded scored:false{_why_unscored(run)}; measured for information only, "
+            "and excluded from every aggregate"
+        )
 
     return RunScore(
         run_id=run["run_id"],
@@ -733,6 +741,19 @@ def write_paired(scores: Sequence[RunScore], path: Path | None = None) -> Path:
                     ),
                 ])
     return path
+
+
+def _why_unscored(run: dict[str, Any]) -> str:
+    """What kind of unscored record this is, when the record says.
+
+    A warm-up run and a run an operator switched off are both unscored, and the
+    difference is worth one clause: the first is a design decision made before
+    any scored run, the second is a decision made during the batch.
+    """
+    if run.get("warmup"):
+        return " (the pre-batch warm-up)"
+    reason = run.get("unscored_reason")
+    return f" ({reason})" if reason else ""
 
 
 def _value(score: RunScore | None, key: str) -> float | None:

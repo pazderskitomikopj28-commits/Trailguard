@@ -393,7 +393,7 @@ def test_the_warmup_answer_shapes_are_handled_as_observed() -> None:
 
 
 def _record(run_id, scenario_id, condition, repetition, *, scored=True,
-            answer=None, replaces=None):
+            answer=None, replaces=None, warmup=False):
     return {
         "run_id": run_id,
         "scenario_id": scenario_id,
@@ -401,6 +401,7 @@ def _record(run_id, scenario_id, condition, repetition, *, scored=True,
         "repetition": repetition,
         "scored": scored,
         **({"replaces": replaces} if replaces else {}),
+        **({"warmup": True} if warmup else {}),
         "stop_reason": "completed",
         "steps": 4,
         "final_response": answer or "**NOW** Risk Level: GREEN.",
@@ -522,3 +523,32 @@ def test_an_incomplete_pair_is_reported_as_incomplete_not_as_zero(tmp_path, monk
     assert row["without_skill"] == "1.000000"
     assert row["with_skill"] == ""
     assert row["comparison"] == "pair_incomplete"
+
+
+def test_every_excluded_run_states_why_it_was_excluded(tmp_path, monkeypatch) -> None:
+    """metrics.json lists exclusions with a reason; a blank one is an oversight.
+
+    A warm-up is excluded on purpose, but "on purpose" is itself the reason, and
+    the final report reads these entries to explain why a pair is short.
+    """
+    from evals.phase5 import evaluate as module
+
+    raw = tmp_path / "raw"
+    out = tmp_path / "out"
+    _write_raw(raw, [
+        _record("S01_clear_day__without_skill__rep0", "S01_clear_day", "without_skill", 0,
+                scored=False, warmup=True),
+        _record("S01_clear_day__with_skill__rep0", "S01_clear_day", "with_skill", 0,
+                scored=False, warmup=True),
+        _record("S01_clear_day__without_skill__rep1", "S01_clear_day", "without_skill", 1),
+        _record("S01_clear_day__with_skill__rep1", "S01_clear_day", "with_skill", 1),
+    ])
+    for path in ("SUMMARY_PATH", "PAIRED_PATH", "MANUAL_REVIEW_PATH", "METRICS_PATH"):
+        monkeypatch.setattr(module, path, out / f"{path.lower()}")
+    _write_raw(raw, [])  # keep the directory non-empty for the linter
+
+    scores = module.evaluate(raw_dir=raw)
+    warmup = [s for s in scores if s.repetition == 0]
+    assert len(warmup) == 2, "the warm-up must be read even when not scored"
+    assert warmup[0].exclusion_reason and "warm-up" in warmup[0].exclusion_reason
+    assert not warmup[0].scored

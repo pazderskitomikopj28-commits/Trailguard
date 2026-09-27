@@ -404,7 +404,7 @@ def _record(run_id, scenario_id, condition, repetition, *, scored=True,
         **({"warmup": True} if warmup else {}),
         "stop_reason": "completed",
         "steps": 4,
-        "final_response": answer or "**NOW** Risk Level: GREEN.",
+        "final_response": "**NOW** Risk Level: GREEN." if answer is None else answer,
         "attempted_tool_calls": 1,
         "attempted_tool_names": ["assess_risk"],
         "unknown_tool_calls": 0,
@@ -552,3 +552,34 @@ def test_every_excluded_run_states_why_it_was_excluded(tmp_path, monkeypatch) ->
     assert len(warmup) == 2, "the warm-up must be read even when not scored"
     assert warmup[0].exclusion_reason and "warm-up" in warmup[0].exclusion_reason
     assert not warmup[0].scored
+
+
+def test_a_lower_bound_flag_is_not_raised_about_an_answer_that_does_not_exist() -> None:
+    """A run that produced no answer has nothing to search for a rule id in.
+
+    Two of the scored runs stopped on a provider error with an empty final
+    response. For those, "the answer does not name R-B" is the empty answer
+    restated, not an ambiguity a human can resolve; queueing it would spend the
+    reviewer's attention on a decision that has already been made by M1 and by
+    the exclusion.
+    """
+    from evals.phase5.evaluate import score_run
+
+    ref = reference("S04_sunset_margin_pace_drop")
+    empty = _record("S04_sunset_margin_pace_drop__without_skill__rep1",
+                    "S04_sunset_margin_pace_drop", "without_skill", 1, answer="")
+    empty["stop_reason"] = "provider_error"
+    empty["provider_error"] = {"class_name": "ProviderResponseError", "message": "HTTP 400"}
+    # S04 is RED everywhere with R-B at every horizon, so R-B must be named.
+    scored = score_run(empty, reference=ref)
+    assert "M8_hard_rule_recall" not in {f["metric"] for f in scored.flags}, (
+        "an empty answer must not generate a rule-recall flag"
+    )
+    assert scored.values["M8_hard_rule_recall"] == 0.0, "the metric itself is still scored"
+
+    answered = _record("S04_sunset_margin_pace_drop__without_skill__rep1",
+                       "S04_sunset_margin_pace_drop", "without_skill", 1,
+                       answer="**NOW** Risk Level: RED. The wind is a problem.")
+    assert "M8_hard_rule_recall" in {
+        f["metric"] for f in score_run(answered, reference=ref).flags
+    }, "a real answer that omits the rule must still be flagged for review"

@@ -549,7 +549,12 @@ def score_run(
     for horizon in claim.hedged_levels:
         flag("M6_risk_level_exact_match", True,
              f"the level claimed for {horizon} is hedged nearby")
-    if reference_rule_ids and len(rules_named) < len(reference_rule_ids):
+    # A rule the regex did not find is only ambiguous if there was an answer to
+    # search. When the run produced none at all, "the answer does not name R-B"
+    # is not a second finding -- it is the empty answer restated, and it belongs
+    # to M1 and to the exclusion, both of which already carry it. Queueing it
+    # would hand the reviewer a decision that has nothing to decide.
+    if reference_rule_ids and len(rules_named) < len(reference_rule_ids) and final_answer.strip():
         missing = sorted(reference_rule_ids - rules_named)
         flag("M8_hard_rule_recall", True,
              f"the answer does not name {', '.join(missing)}; a regex cannot see a rule "

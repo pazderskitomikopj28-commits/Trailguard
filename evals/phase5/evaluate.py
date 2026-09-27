@@ -66,6 +66,15 @@ SUMMARY_PATH = REPO_ROOT / "runs" / "phase5" / "summary.csv"
 PAIRED_PATH = REPO_ROOT / "runs" / "phase5" / "paired_results.csv"
 METRICS_PATH = REPO_ROOT / "runs" / "phase5" / "metrics.json"
 
+#: Cause evidence for runs the record itself cannot classify. The provider
+#: discards an HTTP 400's response body, so a context-length refusal and an
+#: arbitrary transport refusal arrive in the record as the same class name.
+#: ``runs/phase5/forensic_check.py`` rebuilds the prompt from the preserved
+#: trace and asks the endpoint whether it fits; what it proves lands here, one
+#: entry per run, with the evidence beside it. Absent file means no run has been
+#: reclassified, which is the state the benchmark ran in.
+CAUSE_EVIDENCE_PATH = REPO_ROOT / "runs" / "phase5" / "cause_evidence.json"
+
 CONDITIONS = ("without_skill", "with_skill")
 
 # --------------------------------------------------------------------------
@@ -368,6 +377,35 @@ def _rate(numerator: int, denominator: int) -> float | None:
     return None if denominator == 0 else numerator / denominator
 
 
+_CAUSE_EVIDENCE_CACHE: dict[str, dict[str, Any]] | None = None
+
+
+def load_cause_evidence(path: Path | None = None) -> dict[str, dict[str, Any]]:
+    """Run id -> the cause proven for it, from the forensic probe.
+
+    Cached because ``score_run`` is called once per run and the file does not
+    change underneath a single evaluation. An absent or unreadable file yields an
+    empty mapping: the benchmark must run exactly as it did without the probe.
+    """
+    global _CAUSE_EVIDENCE_CACHE
+    if path is None and _CAUSE_EVIDENCE_CACHE is not None:
+        return _CAUSE_EVIDENCE_CACHE
+    target = Path(path) if path is not None else CAUSE_EVIDENCE_PATH
+    evidence: dict[str, dict[str, Any]] = {}
+    if target.is_file():
+        try:
+            payload = json.loads(target.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):  # pragma: no cover - unreadable file
+            payload = {}
+        for entry in payload.get("runs", []):
+            run_id = entry.get("run_id")
+            if run_id:
+                evidence[run_id] = entry
+    if path is None:
+        _CAUSE_EVIDENCE_CACHE = evidence
+    return evidence
+
+
 def score_run(
     run: dict[str, Any],
     *,
@@ -408,7 +446,18 @@ def score_run(
     provider_class = (provider_error or {}).get("class_name")
     provider_message = ((provider_error or {}).get("message") or "").lower()
     is_context_limit = any(sub in provider_message for sub in CONTEXT_LIMIT_SUBSTRINGS)
-    infra_accident = stop_reason == "provider_error"
+    cause = None
+    if not is_context_limit and stop_reason == "provider_error":
+        # The record cannot say which kind of refusal this was, so ask the
+        # evidence file. Only a *proven* context limit reclassifies: an
+        # unclassified provider failure stays an infra accident, which is the
+        # direction that can never score a machine failure as a skill failure.
+        cause = load_cause_evidence().get(run["run_id"])
+        if cause and cause.get("cause") == "context_limit":
+            is_context_limit = True
+    # A context-limit failure is a result, not an accident, so it must not be
+    # excluded by the infra-accident branch below.
+    infra_accident = stop_reason == "provider_error" and not is_context_limit
 
     # --- M1: completion ------------------------------------------------------- #
     answered = bool(final_answer.strip()) and not answer_is_a_tool_call(final_answer)
@@ -574,6 +623,15 @@ def score_run(
     if reference.get("expectations_for_evaluator", {}).get("false_alarm_probe") and false_alarms:
         flag("M11_false_alarm_rate", True,
              "this scenario fires nothing anywhere, so any hazard claimed here is invented")
+
+    if cause and cause.get("cause") == "context_limit":
+        # The record says only "ProviderResponseError"; the probe is what makes
+        # this a context-limit failure. Queue it for review so the reclassification
+        # is visible rather than silent, and so a reader sees the evidence that
+        # moved a run from "excluded" to "scored".
+        flag("M16_context_limit_failure_rate", True,
+             f"cause proven by the forensic probe, not by the record: "
+             f"{(cause.get('evidence') or '')[:160]}")
 
     exclusion = None
     if infra_accident:

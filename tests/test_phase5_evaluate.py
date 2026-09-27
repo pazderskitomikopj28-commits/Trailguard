@@ -583,3 +583,108 @@ def test_a_lower_bound_flag_is_not_raised_about_an_answer_that_does_not_exist() 
     assert "M8_hard_rule_recall" in {
         f["metric"] for f in score_run(answered, reference=ref).flags
     }, "a real answer that omits the rule must still be flagged for review"
+
+
+# ------------------------------------------------- the forensic reclassification
+
+
+@pytest.fixture
+def cause_evidence(tmp_path):
+    """Redirect the cause-evidence file into scratch, and reset the module cache."""
+    from evals.phase5 import evaluate as module
+
+    def install(entries: list[dict], *, absent: bool = False):
+        module._CAUSE_EVIDENCE_CACHE = None
+        if absent:
+            return None
+        path = tmp_path / "cause_evidence.json"
+        path.write_text(json.dumps({"runs": entries}), encoding="utf-8")
+        return path
+
+    original = module.CAUSE_EVIDENCE_PATH
+    module.CAUSE_EVIDENCE_PATH = tmp_path / "cause_evidence.json"
+    yield install
+    module.CAUSE_EVIDENCE_PATH = original
+    module._CAUSE_EVIDENCE_CACHE = None
+
+
+def _context_evidence(run_id: str) -> dict:
+    return {"run_id": run_id, "cause": "context_limit",
+            "evidence": "the endpoint refused this exact lower-bound prompt"}
+
+
+def test_a_proven_context_limit_is_scored_as_a_result_not_an_accident(cause_evidence) -> None:
+    """A context-limit failure is a result; an infra accident is not.
+
+    The provider records both as the same class name, so without evidence the
+    run is excluded -- which is safe but wrong for the runs that were provably
+    over the window.
+    """
+    from evals.phase5.evaluate import score_run
+
+    run = _record("S04_sunset_margin_pace_drop__without_skill__rep1",
+                  "S04_sunset_margin_pace_drop", "without_skill", 1, answer="")
+    run["stop_reason"] = "provider_error"
+    run["provider_error"] = {"class_name": "ProviderResponseError", "message": "HTTP 400"}
+    ref = reference("S04_sunset_margin_pace_drop")
+
+    cause_evidence([_context_evidence(run["run_id"])])
+    scored = score_run(run, reference=ref)
+    assert scored.scored, "a proven context limit must be scored, not excluded"
+    assert scored.exclusion_reason is None
+    assert scored.values["M16_context_limit_failure_rate"] == 1.0
+    assert scored.values["M18_provider_failure_rate"] == 0.0
+    assert {f["metric"] for f in scored.flags} == {"M16_context_limit_failure_rate"}
+
+
+def test_an_unclassified_provider_failure_stays_an_excluded_accident(cause_evidence) -> None:
+    """The default must stay conservative: unknown means excluded."""
+    from evals.phase5.evaluate import score_run
+
+    run = _record("S04_sunset_margin_pace_drop__without_skill__rep1",
+                  "S04_sunset_margin_pace_drop", "without_skill", 1, answer="")
+    run["stop_reason"] = "provider_error"
+    run["provider_error"] = {"class_name": "ProviderResponseError", "message": "HTTP 400"}
+    ref = reference("S04_sunset_margin_pace_drop")
+
+    # The probe accepted this one's lower bound: that proves nothing either way.
+    cause_evidence([{"run_id": run["run_id"], "cause": "unclassified",
+                     "evidence": "accepted at 14163 prompt tokens"}])
+    scored = score_run(run, reference=ref)
+    assert not scored.scored
+    assert "infra accident" in (scored.exclusion_reason or "")
+    assert scored.values["M16_context_limit_failure_rate"] == 0.0
+    assert scored.values["M18_provider_failure_rate"] == 1.0
+
+
+def test_the_recorded_message_still_wins_when_it_names_the_limit(cause_evidence) -> None:
+    """If the record ever does carry the text, no evidence file is consulted."""
+    from evals.phase5.evaluate import score_run
+
+    run = _record("S04_sunset_margin_pace_drop__without_skill__rep1",
+                  "S04_sunset_margin_pace_drop", "without_skill", 1, answer="")
+    run["stop_reason"] = "provider_error"
+    run["provider_error"] = {
+        "class_name": "ProviderResponseError",
+        "message": "HTTP 400: maximum context length is 16384 tokens",
+    }
+    ref = reference("S04_sunset_margin_pace_drop")
+    cause_evidence([], absent=True)
+    scored = score_run(run, reference=ref)
+    assert scored.scored
+    assert scored.values["M16_context_limit_failure_rate"] == 1.0
+    assert not any(f["metric"] == "M16_context_limit_failure_rate" for f in scored.flags), (
+        "no forensic flag when the record itself said it"
+    )
+
+
+def test_no_evidence_file_means_the_benchmark_runs_exactly_as_it_did(cause_evidence) -> None:
+    from evals.phase5.evaluate import score_run
+
+    run = _record("S04_sunset_margin_pace_drop__without_skill__rep1",
+                  "S04_sunset_margin_pace_drop", "without_skill", 1, answer="")
+    run["stop_reason"] = "provider_error"
+    run["provider_error"] = {"class_name": "ProviderResponseError", "message": "HTTP 400"}
+    ref = reference("S04_sunset_margin_pace_drop")
+    cause_evidence([], absent=True)
+    assert not score_run(run, reference=ref).scored

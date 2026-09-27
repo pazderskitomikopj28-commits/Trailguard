@@ -71,6 +71,17 @@ SCENARIO_FILES: list[Path] = sorted(SCENARIOS_DIR.rglob("*.yaml"))
 collect_ignore: list[str] = [
     "../scripts/test_live_weather.py",
     "../scripts/test_stepfun_agent.py",
+    # Phase 4's local-model smoke. Excluded for the same two reasons, plus one of
+    # its own: it reaches http://127.0.0.1:8000, and the suite must make no HTTP
+    # call at all (spec 13) -- including a loopback one. The autouse
+    # ``no_external_network`` fixture would already fail a collected run, which is
+    # the right outcome and the wrong message; this way the exclusion is explicit.
+    "../scripts/test_local_agent.py",
+    # Phase 4's capability probe, for the same reason and one more: it is the script
+    # that proves the *server* emits structured tool calls, so it must stay exactly as
+    # capable of failing as the day it was run. pytest collecting it would turn a
+    # server-down evening into a red suite that means the opposite of what it says.
+    "../scripts/test_tool_calling.py",
 ]
 
 #: Frozen horizons (spec 6.1) in canonical order.

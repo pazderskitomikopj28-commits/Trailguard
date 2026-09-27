@@ -214,8 +214,9 @@ benchmark (spec 9), and every observation is wrapped in `Observed[...]` so fresh
 provenance and confidence are always available.
 
 **Harness <-> Providers.** `ModelProvider` is pure transport (Step 5 Preview in
-Phase 3, a local 4B-8B model on DGX Spark in Phase 4). One harness drives both, which
-is what keeps the `2 models x 2 skill conditions` matrix fair (spec 14.2).
+Phase 3, a local `Qwen/Qwen3-VL-30B-A3B-Instruct` served by vLLM on DGX Spark in
+Phase 4, `max_model_len=16384`). One harness drives both, which is what keeps the
+`2 models x 2 skill conditions` matrix fair (spec 14.2).
 
 **Everything <-> Trace.** `TraceCollector` is the only writer of `EvidenceTrace`
 (spec 18): tool calls with redacted arguments, horizons checked, freshness checks,

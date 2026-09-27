@@ -420,11 +420,32 @@ def replay_dataset(
 # --------------------------------------------------------------------------- #
 
 
-def _provider_from_environment() -> ModelProvider:
-    """Build the Step 5 Preview provider from the environment, or fail loudly."""
-    from ..providers.stepfun import StepFunProvider
+def _provider_from_environment(provider_name: str = "stepfun") -> ModelProvider:
+    """Build the requested transport from the environment, or fail loudly.
 
-    return StepFunProvider()
+    ``provider_name`` selects the transport, never the experiment: whatever it
+    returns is handed to the *same* ``run_agent``, with the same task, the same
+    context snapshot, the same five tools and the same sampling parameters, which
+    is what spec 3.1 requires. A backend knob at the driver is therefore not a
+    fairness loophole -- it is the same reason the replay driver exists at all.
+
+    ``local`` needs no credential: the DGX Spark server authenticates nobody, so
+    refusing to run for a missing ``STEPFUN_API_KEY`` would be a lie about why
+    nothing happened. An unreachable endpoint fails visibly inside the transport
+    instead, and the run stops with ``provider_error`` (spec 12, 17).
+    """
+    if provider_name == "local":
+        from ..providers.local import LocalModelProvider
+
+        return LocalModelProvider()
+    if provider_name == "stepfun":
+        from ..providers.stepfun import StepFunProvider
+
+        return StepFunProvider()
+    raise ValueError(
+        f"unknown provider {provider_name!r}; the replay driver serves 'stepfun' and 'local'. "
+        "A name it does not know would otherwise build an endpoint nobody chose."
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -447,6 +468,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-tokens", type=int, default=2048)
     parser.add_argument(
+        "--provider",
+        default="stepfun",
+        choices=("stepfun", "local"),
+        help=(
+            "Transport to run: 'stepfun' (Step 5 Preview, needs STEPFUN_API_KEY) or "
+            "'local' (the DGX Spark server, needs no credential). Both use the same "
+            "harness, the same tools and the same sampling parameters."
+        ),
+    )
+    parser.add_argument(
         "--conditions",
         nargs="*",
         default=list(CONDITIONS),
@@ -455,7 +486,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     arguments = parser.parse_args(argv)
 
-    if not os.environ.get("STEPFUN_API_KEY"):
+    if arguments.provider == "stepfun" and not os.environ.get("STEPFUN_API_KEY"):
         print("NOT RUN -- credential unavailable: STEPFUN_API_KEY is not set.")
         print("This driver needs a live model; no trace was written and none was fabricated.")
         return 2
@@ -472,7 +503,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         summaries = replay_dataset(
             scenario_paths=paths,
-            model_provider=_provider_from_environment(),
+            model_provider=_provider_from_environment(arguments.provider),
             output_dir=arguments.out,
             conditions=arguments.conditions,
             temperature=arguments.temperature,

@@ -15,6 +15,8 @@ pytest`` the way spec 13 requires.
 
 from __future__ import annotations
 
+import ast
+import inspect
 import json
 from pathlib import Path
 from typing import Any
@@ -24,6 +26,7 @@ import pytest
 from tests.stub_provider import StubProvider
 
 from trailguard.agent import replay_runner
+from trailguard.agent.harness import run_agent
 from trailguard.agent.replay_runner import (
     DEFAULT_OUTPUT_DIR,
     final_answer_findings,
@@ -398,6 +401,106 @@ def test_the_command_line_reports_not_run_without_a_credential(
     assert not list(tmp_path.rglob("*.json")), "no trace was fabricated"
 
 
+def test_the_local_option_builds_the_local_provider() -> None:
+    """``--provider local`` runs the same harness over the Spark box's model.
+
+    No credential is needed to build it, and the model id is the one this
+    deployment serves -- so a run that answered with a differently-named model
+    would be a different experiment.
+    """
+    local = replay_runner._provider_from_environment("local")
+    stepfun = replay_runner._provider_from_environment("stepfun")
+
+    assert local.name == "local"
+    assert local.model == "qwen3-vl-30b-a3b"
+    assert stepfun.name == "stepfun", (
+        "the two options must select genuinely different transports, not one "
+        "transport behind two spellings"
+    )
+    assert local.base_url == "http://127.0.0.1:8000/v1"
+
+
+def test_the_local_option_needs_no_stepfun_credential(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The Spark server authenticates nobody, so its credential gate is a lie.
+
+    The driver refuses to run *only* when the transport it was asked for needs a
+    credential it does not have. An unreachable local endpoint is a transport
+    failure, not a missing-credential problem, and must be reported as such.
+    """
+    monkeypatch.delenv("STEPFUN_API_KEY", raising=False)
+
+    def _boom(provider_name: str = "stepfun") -> ModelProvider:
+        raise ProviderUnavailable("local server unreachable")
+
+    monkeypatch.setattr(replay_runner, "_provider_from_environment", _boom)
+
+    status = main(["--provider", "local", "--scenario", str(CLEAR_DAY),
+                   "--out", str(tmp_path)])
+
+    printed = capsys.readouterr().out
+    assert "NOT RUN" not in printed, (
+        "the local transport needs no credential; saying so would misreport the failure"
+    )
+    assert "PROVIDER FAILURE" in printed
+    assert status == 3
+
+
+def test_an_unknown_provider_name_is_refused_rather_than_defaulted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A name the driver does not know must not silently mean StepFun."""
+    monkeypatch.setenv("STEPFUN_API_KEY", "test-placeholder-not-a-real-credential")
+
+    with pytest.raises(ValueError) as excinfo:
+        replay_runner._provider_from_environment("gpt")
+
+    assert "unknown provider" in str(excinfo.value)
+
+
+def test_the_provider_choice_never_reaches_the_harness_arguments() -> None:
+    """Spec 3.1: the transport is selected outside the compared variables.
+
+    If ``--provider`` changed anything the two conditions see -- tools, task,
+    context, sampling -- the single-variable comparison would be broken. The
+    provider object is compared by identity of *behaviour*, not by leaking a flag
+    into ``run_agent``.
+    """
+    signature = inspect.signature(replay_runner._provider_from_environment)
+    assert list(signature.parameters) == ["provider_name"], (
+        "the selection is one argument at the driver, not a parameter threaded "
+        "through run_agent"
+    )
+
+    backend_named = {"provider", "provider_name", "qwen", "stepfun", "local"}
+    for entry_point in (run_agent, replay_runner.replay_dataset):
+        parameters = set(inspect.signature(entry_point).parameters)
+        leaked = sorted(backend_named & parameters)
+        assert not leaked, (
+            f"{entry_point.__name__} gained {leaked}; a backend identity in the "
+            "compared call would make the two conditions differ in more than the skill"
+        )
+
+    # ...and no call site inside the driver passes one either. A signature check
+    # alone would miss a keyword argument added where the call is made.
+    source = inspect.getsource(replay_runner)
+    compared = {"run_agent", "replay_dataset", "replay_scenario"}
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call):
+            continue
+        callee = node.func
+        name = getattr(callee, "id", None) or getattr(callee, "attr", None)
+        if name not in compared:
+            continue
+        passed = {keyword.arg for keyword in node.keywords if keyword.arg}
+        leaked_at_call = sorted(backend_named & passed)
+        assert not leaked_at_call, (
+            f"{name}() is called with {leaked_at_call}; the backend choice stays at "
+            "the driver, where selecting a transport is legitimate"
+        )
+
+
 def test_the_command_line_reports_not_run_when_the_dataset_is_empty(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -438,7 +541,7 @@ def test_the_command_line_reports_a_transport_failure_by_class_name_only(
     decoy = "sk-decoy-should-never-be-printed-000"
     monkeypatch.setenv("STEPFUN_API_KEY", decoy)
 
-    def _failing_provider() -> ModelProvider:
+    def _failing_provider(provider_name: str = "stepfun") -> ModelProvider:
         raise ProviderUnavailable("decoy transport failure for the CLI test")
 
     monkeypatch.setattr(replay_runner, "_provider_from_environment", _failing_provider)

@@ -66,6 +66,30 @@ def _public_members(provider_class: type[ModelProvider]) -> set[str]:
     return {name for name in dir(provider_class) if not name.startswith("_")}
 
 
+def forbidden_seams() -> tuple[str, ...]:
+    """Substrings of a member name that would let a provider answer without transport.
+
+    A fallback has to live *somewhere* on the object, and it has to be reachable
+    by name or by attribute. Naming the seams turns "there is no fallback" from a
+    claim into a check on the public surface -- and it fails the day somebody adds
+    a cache, a replay, a fixture, a stub or a backup path.
+    """
+    return (
+        "cache",
+        "fallback",
+        "backup",
+        "replay",
+        "fixture",
+        "stub",
+        "scripted",
+        "canned",
+        "fake",
+        "mock",
+        "sample",
+        "default_response",
+    )
+
+
 def test_both_providers_expose_the_same_public_surface() -> None:
     """No provider-only member exists that a caller could branch on (spec 16).
 
@@ -239,18 +263,74 @@ def test_no_provider_reads_a_configuration_file() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# generate: the local backend still defers to its phase (spec 16)
+# generate: the local backend is wired for Phase 4 (spec 16)
 # --------------------------------------------------------------------------- #
 
 
-def test_the_local_provider_defers_to_phase_four() -> None:
-    """The local backend names the phase that wires it, so no call silently no-ops."""
+def test_the_local_provider_is_wired_for_phase_four() -> None:
+    """The local backend reaches its transport instead of deferring to its phase.
+
+    This replaces the Phase 0/3 guard that asserted ``NotImplementedError``. The
+    replacement is deliberately the *same* strength rather than a weaker one: it
+    asserts that a call reaches the transport and surfaces as the transport failures
+    a local provider must produce -- an unusable endpoint (no model, no server),
+    which is the DGX Spark box exhibits when its server is stopped.
+
+    What it must never do is fall back. A second assertion pins that the failure is
+    a :class:`ProviderUnavailable`, and that the model it reports is still the one
+    that was constructed -- not a substitute chosen so that some answer exists.
+    """
     provider = LocalModelProvider(model="m", base_url="u")
 
-    with pytest.raises(NotImplementedError) as excinfo:
+    with pytest.raises(ProviderUnavailable) as excinfo:
         provider.generate(TRANSCRIPT, tools=None, temperature=0.0, max_tokens=2048)
 
-    assert "Phase 4" in str(excinfo.value)
+    # The model was never substituted, and the endpoint named is the one configured.
+    assert "no fallback" in str(excinfo.value)
+    assert provider.model == "m", "the provider must not rewrite its own model to answer"
+
+
+def test_the_local_provider_fails_visibly_rather_than_falling_back() -> None:
+    """A stopped local server stops the run; it does not reroute it (spec 17).
+
+    The one substitution that would make a broken local deployment look like a
+    successful local run is a fallback -- to another provider, to a cached answer,
+    or to a scripted turn. All three would produce a benchmark row for a run that
+    did not happen.
+
+    The first draft of this test pinned it with ``assert provider.model !=
+    "step-5-preview"`` and ``assert "relative" not in repr(provider).lower()``:
+    a literal comparison against a string the provider was never given, and a
+    substring of a ``repr`` nobody defines. Neither could fail. This version
+    reads the provider's *public surface* -- every attribute a caller can reach
+    -- and forbids the seams a fallback would need, then runs the real failure
+    path to confirm the endpoint named is the one that was configured.
+    """
+    provider = LocalModelProvider(model="m", base_url="http://127.0.0.1:1/v1")
+
+    seams = forbidden_seams()
+    public = [
+        name
+        for name in dir(provider)
+        if not name.startswith("_") and name not in {"generate", "model", "base_url"}
+    ]
+    for name in public:
+        assert not any(seam in name.lower() for seam in seams), (
+            f"{name!r} is a public seam that could answer without the endpoint"
+        )
+
+    # The failure is classified as "no answer", which is what the harness records
+    # as stop_reason='provider_error'. The message names the *local* transport, so a
+    # reader can tell which endpoint refused; the class is deliberately refusal-free
+    # (the endpoint's URL stays out of the message entirely, by design), so this
+    # asserts what the message does carry rather than what it withholds.
+    with pytest.raises(ProviderError) as excinfo:
+        provider.generate(TRANSCRIPT, tools=None, temperature=0.0, max_tokens=2048)
+    assert type(excinfo.value) is ProviderUnavailable, (
+        "a connection failure must be 'no answer', not a determinism-shaped refusal"
+    )
+    assert "local transport failed" in str(excinfo.value)
+    assert "stepfun" not in str(excinfo.value).lower()
 
 
 def test_stepfun_generate_is_wired_for_phase_three(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -361,21 +441,114 @@ def test_the_transcript_message_rejects_unknown_fields() -> None:
     assert "accident_probability" in str(excinfo.value)
 
 
+def _environment_names_read(module_name: str) -> set[str]:
+    """Every environment variable name a module actually reads, as an AST fact.
+
+    Two shapes are recognised, because the two providers legitimately differ:
+
+    * a direct ``os.environ.get("NAME")`` (the remote transport);
+    * a name handed to this module's own ``_from_environment(...)`` helper, whose
+      first argument is a tuple of literals in precedence order (the local transport).
+
+    An AST walk rather than a source scan, because a source scan also matches the
+    module's own constants (``DEFAULT_BASE_URL`` is a literal in this file and is
+    not an environment variable). A third shape -- an env read reached through an
+    argument or an attribute this walker does not model -- yields no name and
+    therefore fails the equality assertion below, which is the safe failure: the
+    contract is checked by absence, not by trust.
+    """
+    import ast
+    import importlib
+    import inspect
+
+    tree = ast.parse(inspect.getsource(importlib.import_module(module_name)))
+
+    # Resolve module-level literal assignments first, so a provider that declares
+    # its environment names in one place (``_MODEL_ENV = (...)``) is as checkable as
+    # one that inlines them at the call site.
+    constants: dict[str, tuple[str, ...]] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Tuple):
+            continue
+        values = tuple(
+            e.value for e in node.value.elts
+            if isinstance(e, ast.Constant) and isinstance(e.value, str)
+        )
+        if len(values) == len(node.value.elts):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    constants[target.id] = values
+
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        func = node.func
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr in {"getenv", "get"}
+            and isinstance(func.value, ast.Attribute)
+            and func.value.attr == "environ"
+        ):
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                names.add(first.value)
+            continue
+        if isinstance(func, ast.Name) and func.id == "_from_environment":
+            first = node.args[0]
+            if isinstance(first, ast.Name):
+                names.update(constants.get(first.id, ()))
+            else:
+                for element in ast.walk(first):
+                    if isinstance(element, ast.Constant) and isinstance(element.value, str):
+                        names.add(element.value)
+    return names
+
+
 def test_every_configuration_lookup_is_a_documented_environment_variable() -> None:
-    """Only the variables the module docstrings declare are read, and via os.environ."""
+    """Only the variables the module docstrings declare are read, and via os.environ.
+
+    Bidirectional, in both directions, because a one-way check is not a check:
+
+    * every documented name must still be read, so a rename cannot quietly orphan a
+      variable somebody exported;
+    * every variable the module *reads* must be documented, so a new lookup cannot
+      be added without a docstring line and a test update.
+
+    The second half is what makes this a guard rather than a description. Before it
+    existed, adding ``os.environ.get("SOMETHING_NEW")`` to a provider passed every
+    provider test in the suite -- the configuration contract is precisely the sort of
+    thing that erodes one convenient lookup at a time.
+    """
     documented: dict[str, set[str]] = {
         "trailguard.providers.stepfun": {"STEPFUN_MODEL", "STEPFUN_BASE_URL", "STEPFUN_API_KEY"},
-        "trailguard.providers.local": {"TG_LOCAL_MODEL", "TG_LOCAL_BASE_URL"},
+        "trailguard.providers.local": {
+            # Phase 4 names, which win when both are set...
+            "TRAILGUARD_LOCAL_MODEL",
+            "TRAILGUARD_LOCAL_BASE_URL",
+            "TRAILGUARD_LOCAL_API_KEY",
+            # ...and the Phase 0 names kept working, so an operator who exported
+            # the documented-old form is not silently ignored.
+            "TG_LOCAL_MODEL",
+            "TG_LOCAL_BASE_URL",
+        },
     }
     for module_name, expected in documented.items():
         executed = _provider_code_names(module_name)
+        assert "environ" in executed, f"{module_name} must read the process environment"
 
-        # The documented names appear in the code as literal strings, which the AST
-        # walk above deliberately does not collect; read the raw source for those.
+        actually_read = _environment_names_read(module_name)
+        assert actually_read == expected, (
+            f"{module_name} reads {sorted(actually_read)} but documents {sorted(expected)}; "
+            "the configuration contract drifted -- add the variable to the module "
+            "docstring and to this set, or stop reading it"
+        )
+
+        # The names also appear as literals, so a rename cannot pass by changing
+        # only the lookup helper.
         source = _provider_source(module_name)
         for name in expected:
             assert f'"{name}"' in source, f"{module_name} no longer reads {name}"
-        assert "environ" in executed, f"{module_name} must read the process environment"
 
 
 def test_no_credential_value_is_reachable_from_an_instance(monkeypatch: pytest.MonkeyPatch) -> None:

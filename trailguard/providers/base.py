@@ -6,8 +6,8 @@ Spec section 16 freezes one provider interface so that a *single* harness
 
 * :class:`~trailguard.providers.stepfun.StepFunProvider` -- Step 5 Preview
   through an OpenAI-compatible chat-completions endpoint;
-* :class:`~trailguard.providers.local.LocalModelProvider` -- a local 4B-8B
-  open-source model served on the DGX Spark box (spec 14.1).
+* :class:`~trailguard.providers.local.LocalModelProvider` -- ``Qwen/Qwen3-VL-30B-A3B-Instruct``
+  served by vLLM on the DGX Spark box (spec 14.1).
 
 Responsibility of a provider: pure transport. It turns one list of
 :class:`ChatMessage` into one :class:`ModelResponse` for one model, honouring

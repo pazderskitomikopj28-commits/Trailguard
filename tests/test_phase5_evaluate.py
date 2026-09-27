@@ -12,6 +12,7 @@ not a measurement.
 
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 
@@ -688,3 +689,181 @@ def test_no_evidence_file_means_the_benchmark_runs_exactly_as_it_did(cause_evide
     ref = reference("S04_sunset_margin_pace_drop")
     cause_evidence([], absent=True)
     assert not score_run(run, reference=ref).scored
+
+
+
+# --------------------------------------------------------------------------
+# Manual review: a decision beside the automatic flag, never over it.
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def manual_queue(tmp_path):
+    """Redirect the decision queue into scratch, and reset the module cache."""
+    from evals.phase5 import evaluate as module
+
+    def install(rows: list[dict]):
+        module._MANUAL_DECISIONS_CACHE = None
+        path = tmp_path / "manual_review.csv"
+        with path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=["run_id", "metric", "automatic_flag", "manual_decision",
+                            "short_reason"],
+            )
+            writer.writeheader()
+            writer.writerows(rows)
+        return path
+
+    original = module.MANUAL_REVIEW_PATH
+    module.MANUAL_REVIEW_PATH = tmp_path / "manual_review.csv"
+    yield install
+    module.MANUAL_REVIEW_PATH = original
+    module._MANUAL_DECISIONS_CACHE = None
+
+
+def _queue_row(run_id: str, metric: str, decision: str,
+               automatic_reason: str = "the automatic reason") -> dict:
+    return {"run_id": run_id, "metric": metric, "automatic_flag": "yes",
+            "manual_decision": decision, "short_reason": automatic_reason}
+
+
+def _a_probability_answer() -> str:
+    return "There is an 18% chance of precipitation at NOW. Risk Level: GREEN."
+
+
+def test_an_overturn_zeros_the_value_and_reports_what_the_scan_had(manual_queue) -> None:
+    from evals.phase5.evaluate import apply_manual_decisions, load_manual_decisions, score_run
+
+    run = _record("S01_clear_day__without_skill__rep1", "S01_clear_day", "without_skill", 1,
+                  answer=_a_probability_answer())
+    scored = score_run(run, reference=reference())
+    assert scored.values["M14_unsupported_probability_claim_rate"] == 1.0
+
+    manual_queue([_queue_row(run["run_id"], "M14_unsupported_probability_claim_rate",
+                             "overturn | the number came from the weather tool payload")])
+    assert load_manual_decisions(), "the queue is read back, not assumed"
+    overturns = apply_manual_decisions([scored])
+
+    assert scored.values["M14_unsupported_probability_claim_rate"] == 0.0, (
+        "an overturn must zero the run's contribution to the numerator"
+    )
+    assert overturns == {("S01_clear_day__without_skill__rep1",
+                          "M14_unsupported_probability_claim_rate"): 1.0}, (
+        "the automatic value must come back so the aggregate can report both figures"
+    )
+
+
+def test_a_confirmed_decision_changes_no_number(manual_queue) -> None:
+    from evals.phase5.evaluate import apply_manual_decisions, score_run
+
+    run = _record("S01_clear_day__without_skill__rep1", "S01_clear_day", "without_skill", 1,
+                  answer=_a_probability_answer())
+    scored = score_run(run, reference=reference())
+    manual_queue([_queue_row(run["run_id"], "M14_unsupported_probability_claim_rate",
+                             "confirmed | the reviewer agreed")])
+    assert apply_manual_decisions([scored]) == {}
+    assert scored.values["M14_unsupported_probability_claim_rate"] == 1.0
+
+
+def test_an_overturn_cannot_invent_a_zero_for_a_run_the_metric_did_not_score(
+    manual_queue,
+) -> None:
+    """A metric with no denominator for a run has value None, not 0.
+
+    Zeroing it would read as "the run was measured and passed", when in truth the
+    run could not be measured. A reviewer may only overturn a produced value.
+    """
+    from evals.phase5.evaluate import apply_manual_decisions, score_run
+
+    run = _record("S01_clear_day__without_skill__rep1", "S01_clear_day", "without_skill", 1)
+    run["stop_reason"] = "max_steps"
+    scored = score_run(run, reference=reference())
+    # M1's denominator is every attempted run, so it has a value. M14's is
+    # "completed runs", and a max-step run did not complete: no denominator, so
+    # no value -- which is not the same thing as a value of zero.
+    assert scored.values["M1_completion_rate"] is not None
+    assert scored.values["M14_unsupported_probability_claim_rate"] is None
+
+    manual_queue([_queue_row(run["run_id"], "M14_unsupported_probability_claim_rate",
+                             "overturn | no completed run to overturn")])
+    assert apply_manual_decisions([scored]) == {}
+    assert scored.values["M14_unsupported_probability_claim_rate"] is None, (
+        "still None, not a fabricated 0.0"
+    )
+
+
+def test_an_unrecognised_decision_keyword_stops_the_aggregate(manual_queue) -> None:
+    """A typo must not read as a decision.
+
+    Ignoring it would aggregate the automatic flag while the queue claims a human
+    overruled it -- the one direction that could let the benchmark overstate its
+    own review.
+    """
+    from evals.phase5 import evaluate as module
+
+    manual_queue([_queue_row("S01_clear_day__without_skill__rep1",
+                             "M14_unsupported_probability_claim_rate",
+                             "overtun | mis-typed keyword")])
+    with pytest.raises(ValueError, match="overtun"):
+        module.load_manual_decisions()
+
+
+def test_the_automatic_reason_is_never_overwritten_by_the_decision(manual_queue) -> None:
+    """The manifest's rule: a decision is recorded beside the flag, not over it."""
+    from evals.phase5.evaluate import score_run, write_manual_review
+
+    run = _record("S01_clear_day__without_skill__rep1", "S01_clear_day", "without_skill", 1,
+                  answer=_a_probability_answer())
+    scored = score_run(run, reference=reference())
+    automatic_reason = scored.flags[0]["short_reason"]
+
+    path = manual_queue([_queue_row(run["run_id"], "M14_unsupported_probability_claim_rate",
+                                    "confirmed | agreed",
+                                    automatic_reason=automatic_reason)])
+    # Re-appending the same flag must not duplicate it and must not rewrite the
+    # automatic reason a human reads beside their decision.
+    write_manual_review([scored], path=path)
+    rows = list(csv.DictReader(path.read_text(encoding="utf-8").splitlines()))
+    assert len(rows) == 1, "a re-run appends nothing it already has"
+    assert rows[0]["short_reason"] == automatic_reason
+    assert rows[0]["manual_decision"] == "confirmed | agreed"
+
+
+def test_metrics_json_reports_both_the_automatic_and_the_resolved_figure(
+    tmp_path, manual_queue
+) -> None:
+    from evals.phase5 import evaluate as module
+    from evals.phase5.evaluate import score_run
+
+    run = _record("S01_clear_day__without_skill__rep1", "S01_clear_day", "without_skill", 1,
+                  answer=_a_probability_answer())
+    scored = score_run(run, reference=reference())
+    manual_queue([_queue_row(run["run_id"], "M14_unsupported_probability_claim_rate",
+                             "overturn | the number came from the tool payload")])
+    overturns = module.apply_manual_decisions([scored])
+
+    path = tmp_path / "metrics.json"
+    module.write_metrics_json([scored], path=path, raw_dir=tmp_path, overturns=overturns)
+    entry = json.loads(path.read_text(encoding="utf-8"))["metrics"][
+        "M14_unsupported_probability_claim_rate"
+    ]
+    assert entry["sum_baseline"] == 0.0, "the resolved figure"
+    assert entry["automatic_sum_baseline"] == 1.0, (
+        "what the scan alone produced must still be in the same record"
+    )
+    assert entry["manual_overturns"]["baseline"] == ["S01_clear_day__without_skill__rep1"]
+
+
+def test_a_metric_with_no_overturns_carries_no_overturn_keys(tmp_path) -> None:
+    """Clean metrics must not grow empty overturn bookkeeping."""
+    from evals.phase5 import evaluate as module
+    from evals.phase5.evaluate import score_run
+
+    run = _record("S01_clear_day__without_skill__rep1", "S01_clear_day", "without_skill", 1)
+    scored = score_run(run, reference=reference())
+    path = tmp_path / "metrics.json"
+    module.write_metrics_json([scored], path=path, raw_dir=tmp_path)
+    entry = json.loads(path.read_text(encoding="utf-8"))["metrics"]["M1_completion_rate"]
+    assert "automatic_sum_baseline" not in entry
+    assert "manual_overturns" not in entry

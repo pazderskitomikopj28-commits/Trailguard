@@ -377,6 +377,115 @@ def _rate(numerator: int, denominator: int) -> float | None:
     return None if denominator == 0 else numerator / denominator
 
 
+_MANUAL_DECISIONS_CACHE: dict[tuple[str, str], dict[str, str]] | None = None
+
+#: The decision keywords a reviewer may write into ``manual_decision``. Only
+#: ``overturn`` moves a number; the rest record that a human looked and agreed
+#: (or agreed with a restated cause). Anything unrecognised is refused rather
+#: than silently ignored -- an unrecognised keyword means the queue and this
+#: module disagree, and the safe response is to stop.
+_DECISION_KEYWORDS = frozenset({
+    "confirmed", "confirmed_with_correction", "confirmed_redundant", "overturn",
+})
+
+
+def load_manual_decisions(
+    path: Path | None = None,
+) -> dict[tuple[str, str], dict[str, str]]:
+    """(run_id, metric) -> the reviewer's decision, read back from the queue.
+
+    The queue is written by :func:`write_manual_review`, which appends and never
+    rewrites a row, so a decision typed into ``manual_decision`` survives every
+    later aggregation. This reads it back so the aggregate can honour it.
+
+    ``manual_decision`` holds ``<keyword> | <reason>``. The keyword is split off
+    so the applier can act on it; the reason stays attached so the file remains
+    readable on its own. ``short_reason`` is left exactly as the automatic writer
+    put it -- the manifest's rule is that a decision is recorded *beside* the
+    automatic flag, and overwriting the automatic reason to make room for mine
+    would be the one thing that rule forbids.
+    """
+    global _MANUAL_DECISIONS_CACHE
+    if path is None and _MANUAL_DECISIONS_CACHE is not None:
+        return _MANUAL_DECISIONS_CACHE
+    target = Path(path) if path is not None else MANUAL_REVIEW_PATH
+    decisions: dict[tuple[str, str], dict[str, str]] = {}
+    if target.is_file():
+        try:
+            text = target.read_text(encoding="utf-8")
+        except OSError:  # pragma: no cover - unreadable file
+            text = ""
+        for row in csv.DictReader(text.splitlines()):
+            run_id, metric, decision = (row.get("run_id") or ""), (row.get("metric") or ""), \
+                (row.get("manual_decision") or "").strip()
+            if not run_id or not metric or not decision:
+                continue
+            keyword, _, reason = decision.partition("|")
+            keyword = keyword.strip()
+            if keyword not in _DECISION_KEYWORDS:
+                raise ValueError(
+                    f"{target}: {run_id} / {metric} carries manual_decision "
+                    f"{keyword!r}, which is not one of {sorted(_DECISION_KEYWORDS)}. "
+                    "The queue and this evaluator disagree, so the aggregate stops "
+                    "rather than guessing which side is right."
+                )
+            decisions[(run_id, metric)] = {
+                "keyword": keyword,
+                "reason": reason.strip(),
+                "automatic_flag": row.get("automatic_flag", ""),
+                "automatic_reason": row.get("short_reason", ""),
+            }
+    if path is None:
+        _MANUAL_DECISIONS_CACHE = decisions
+    return decisions
+
+
+def apply_manual_decisions(
+    scores: Sequence[RunScore],
+    decisions: dict[tuple[str, str], dict[str, str]] | None = None,
+) -> dict[tuple[str, str], float]:
+    """Zero a metric value where a reviewer overturned its automatic flag.
+
+    Returns ``{(run_id, metric): the value the scan had given it}`` so the
+    aggregate can report both the automatic and the resolved figure and a reader
+    can see the overturn rather than infer it from a smaller numerator.
+
+    Only ``overturn`` changes anything. ``confirmed`` and its variants are
+    recorded and deliberately do nothing: the flag stood, so the number already
+    reflects it.
+
+    The run's raw record is untouched. The metric definition is untouched -- it
+    is frozen, and it is the definition that says a manual decision may overturn
+    an automatic flag (see M14's caveat). What changes is one run's contribution
+    to one numerator, and the change is reported.
+    """
+    if decisions is None:
+        decisions = load_manual_decisions()
+    overturns: dict[tuple[str, str], float] = {}
+    for score in scores:
+        for row in score.flags:
+            key = (row["run_id"], row["metric"])
+            decision = decisions.get(key)
+            if not decision or decision["keyword"] != "overturn":
+                continue
+            automatic = score.values.get(row["metric"])
+            if automatic is None:
+                # Nothing to overturn: the metric had no denominator for this run
+                # (an excluded run, or a metric its trace cannot supply). A
+                # reviewer cannot overturn a value that was never produced.
+                continue
+            score.values[row["metric"]] = 0.0
+            row["manual_decision"] = f"overturn | {decision['reason']}"
+            score.evidence.setdefault("manual_overturns", []).append({
+                "metric": row["metric"],
+                "automatic_value": automatic,
+                "resolved_value": 0.0,
+                "reason": decision["reason"],
+            })
+            overturns[key] = automatic
+    return overturns
+
+
 _CAUSE_EVIDENCE_CACHE: dict[str, dict[str, Any]] | None = None
 
 
@@ -853,9 +962,18 @@ def write_metrics_json(
     scores: Sequence[RunScore],
     path: Path | None = None,
     raw_dir: Path | None = None,
+    overturns: dict[tuple[str, str], float] | None = None,
 ) -> Path:
-    """Metrics plus the counts that keep the report honest."""
+    """Metrics plus the counts that keep the report honest.
+
+    ``overturns`` maps (run_id, metric) -> the value the scan had given it before
+    a reviewer overturned the flag. Where it is non-empty for a metric, the entry
+    gains ``automatic_sum_*`` keys alongside the resolved ``sum_*`` ones, so the
+    number a reader sees is the one after manual review and the number the scan
+    alone produced is still in the same record.
+    """
     path = _out(path, METRICS_PATH)
+    overturns = overturns or {}
     scored = [s for s in scores if s.scored]
     excluded = [s for s in scores if not s.scored]
     per_metric: dict[str, Any] = {}
@@ -871,7 +989,7 @@ def write_metrics_json(
             )
             if b.values.get(key) is not None and t.values.get(key) is not None
         ]
-        per_metric[key] = {
+        entry: dict[str, Any] = {
             "definition": definition(key).definition,
             "numerator": definition(key).numerator,
             "denominator": definition(key).denominator,
@@ -887,6 +1005,28 @@ def write_metrics_json(
             "n_paired_deltas": len(deltas),
             "mean_paired_delta": (round(sum(deltas) / len(deltas), 6) if deltas else None),
         }
+        overturned_here = {
+            run_id: value for (run_id, metric), value in overturns.items() if metric == key
+        }
+        if overturned_here:
+            # Both figures, in one record: what the scan alone summed to, and what
+            # a reviewer's overturn left. A reader must not have to infer the
+            # second from a smaller numerator.
+            entry["automatic_sum_baseline"] = round(
+                (entry["sum_baseline"] or 0.0)
+                + sum(v for rid, v in overturned_here.items() if rid in {s.run_id for s in base}),
+                6,
+            )
+            entry["automatic_sum_treatment"] = round(
+                (entry["sum_treatment"] or 0.0)
+                + sum(v for rid, v in overturned_here.items() if rid in {s.run_id for s in treat}),
+                6,
+            )
+            entry["manual_overturns"] = {
+                "baseline": [rid for rid in overturned_here if rid in {s.run_id for s in base}],
+                "treatment": [rid for rid in overturned_here if rid in {s.run_id for s in treat}],
+            }
+        per_metric[key] = entry
 
     payload = {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -920,10 +1060,15 @@ def evaluate(
     scores = score_all(
         raw_dir=raw_dir, references_dir=references_dir, include_unscored=include_unscored
     )
+    # Resolve the ambiguity queue BEFORE writing anything that aggregates, so
+    # summary.csv, paired_results.csv and metrics.json all agree on the resolved
+    # numbers. The queue itself is appended to after, so the rows a reviewer is
+    # about to read are the ones the next aggregation will honour.
+    overturns = apply_manual_decisions(scores)
     write_summary(scores)
     write_paired(scores)
     write_manual_review(scores)
-    write_metrics_json(scores, raw_dir=raw_dir)
+    write_metrics_json(scores, raw_dir=raw_dir, overturns=overturns)
     return scores
 
 

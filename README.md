@@ -83,7 +83,7 @@ tests/                         Layer A safety-core + contract / fairness / packa
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest -q                       # 766 tests, all offline
+.venv/bin/python -m pytest -q                       # 1145 tests, all offline
 .venv/bin/python -m pytest -v                       # the same, one line per test
 .venv/bin/python -m trailguard.smoke                # the chain, run once and printed
 .venv/bin/python -m trailguard.weather_smoke         # route-aware weather over NOW/+30/+60/+120

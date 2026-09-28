@@ -131,6 +131,34 @@ standards.
   scenario count) is recorded for local runs and must be measured, not claimed
   (spec 14.3).
 
+## 5.1 Where the Phase 5 paired benchmark actually lives
+
+This document is the protocol for the *protocol*. The paired skill benchmark that
+implements it -- the paired run set, the 14 scenarios, the 18 metrics, the
+preflight gate and the final verdict -- is a separate, self-contained Phase 5
+artefact:
+
+* **`docs/phase5_benchmark_protocol.md`** -- the frozen benchmark protocol: the
+  research question, what is held constant, the single variable, the metric
+  definitions with numerators and denominators, the pre-registered run order and
+  repetitions, and the rule that no composite score may be computed.
+* **`evals/phase5/`** -- the implementation. `manifest.py` *builds*
+  `benchmark_manifest.json` from the assets on disk rather than trusting a written
+  claim; `references.py` generates a Deterministic Reference per scenario by running
+  the frozen Safety Core; `evaluate.py` scores every preserved record
+  deterministically; `preflight.py` is the gate that must return
+  `PREFLIGHT PASS` before a scored run.
+* **`docs/phase5_final_report.md`** -- the result, with the Benchmark Integrity
+  Verdict and the Skill Effectiveness Finding reported separately.
+* **`runs/phase5/`** -- the raw evidence. Note that `runs/` is gitignored by a
+  Phase 13 policy, so the preserved run records live on disk only and are **not**
+  in git; human-readable copies of the four aggregates are in
+  `docs/phase5_evidence/`.
+
+The manual-review rule, restated because it is the one most easily got wrong:
+manual review resolves ambiguity only. **The original trace is never edited**, and a
+reviewer's decision is recorded *beside* the automatic flag, never over it.
+
 ## 6. Scenario dataset expectations (spec 13)
 
 Each scenario pins its `expected_required_tools`, `expected_required_horizons`,

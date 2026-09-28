@@ -867,3 +867,40 @@ def test_a_metric_with_no_overturns_carries_no_overturn_keys(tmp_path) -> None:
     entry = json.loads(path.read_text(encoding="utf-8"))["metrics"]["M1_completion_rate"]
     assert "automatic_sum_baseline" not in entry
     assert "manual_overturns" not in entry
+
+
+def test_the_two_pairings_cannot_drift_apart(tmp_path, monkeypatch) -> None:
+    """metrics.json and paired_results.csv must agree on what a pair is.
+
+    They are written by two different functions from the same scores, and they
+    disagreed once: metrics.json zipped two sorted lists, so it counted 32
+    "paired deltas" for M1 where only 24 slots actually had both conditions.
+    The zip is silent -- no error, no empty list, just a plausible number over
+    pairs that do not exist. This asserts the count and the mean match the
+    slot-keyed file, so a second silent divergence fails the suite.
+    """
+    from evals.phase5 import evaluate as module
+    from evals.phase5.evaluate import score_all
+
+    scores = score_all()
+    overturns = module.apply_manual_decisions(scores)
+    metrics_path = tmp_path / "metrics.json"
+    paired_path = tmp_path / "paired_results.csv"
+    module.write_metrics_json(scores, path=metrics_path, raw_dir=tmp_path, overturns=overturns)
+    module.write_paired(scores, path=paired_path)
+
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))["metrics"]
+    paired = list(csv.DictReader(paired_path.read_text(encoding="utf-8").splitlines()))
+    for metric_id, entry in metrics.items():
+        rows = [r for r in paired if r["metric"] == metric_id]
+        compared = [r for r in rows if r["comparison"] == "compared"]
+        assert entry["n_paired_deltas"] == len(compared), (
+            f"{metric_id}: metrics.json reports {entry['n_paired_deltas']} paired deltas "
+            f"but paired_results.csv has {len(compared)} slots with both conditions"
+        )
+        if compared:
+            expected = sum(float(r["delta_treatment_minus_baseline"]) for r in compared) / len(compared)
+            assert abs(entry["mean_paired_delta"] - expected) < 5e-6, (
+                f"{metric_id}: metrics.json mean {entry['mean_paired_delta']} vs the "
+                f"slot-keyed mean {expected:.6f}"
+            )

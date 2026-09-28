@@ -979,15 +979,19 @@ def write_metrics_json(
     per_metric: dict[str, Any] = {}
     for metric in METRICS:
         key = metric.id.value
-        base = [s for s in scored if s.condition == "without_skill" and key in s.values]
-        treat = [s for s in scored if s.condition == "with_skill" and key in s.values]
+        base_runs = [s for s in scored if s.condition == "without_skill" and key in s.values]
+        treat_runs = [s for s in scored if s.condition == "with_skill" and key in s.values]
+        base = _slot_values(base_runs, key)
+        treat = _slot_values(treat_runs, key)
+        # Paired on the (scenario, repetition) SLOT, never on list position. The
+        # two conditions lose runs to infra accidents at different places, so
+        # their sorted value lists have different lengths and different
+        # occupants; zipping them pairs a baseline run with whichever treatment
+        # run happens to sit at the same index. That produced a mean delta over
+        # pairs that do not exist -- 32 "pairs" where only 24 slots actually had
+        # both sides. write_paired has always keyed on the slot; this did not.
         deltas = [
-            t.values[key] - b.values[key]
-            for b, t in zip(
-                sorted(base, key=lambda s: (s.scenario_id, s.repetition)),
-                sorted(treat, key=lambda s: (s.scenario_id, s.repetition)),
-            )
-            if b.values.get(key) is not None and t.values.get(key) is not None
+            treat[slot] - base[slot] for slot in sorted(set(base) & set(treat))
         ]
         entry: dict[str, Any] = {
             "definition": definition(key).definition,
@@ -995,12 +999,12 @@ def write_metrics_json(
             "denominator": definition(key).denominator,
             "direction": definition(key).direction,
             "manual_review": definition(key).manual_review,
-            "n_runs_baseline": len(base),
-            "n_runs_treatment": len(treat),
-            "n_non_null_baseline": sum(1 for s in base if s.values.get(key) is not None),
-            "n_non_null_treatment": sum(1 for s in treat if s.values.get(key) is not None),
-            "sum_baseline": _sum(base, key),
-            "sum_treatment": _sum(treat, key),
+            "n_runs_baseline": len(base_runs),
+            "n_runs_treatment": len(treat_runs),
+            "n_non_null_baseline": sum(1 for s in base_runs if s.values.get(key) is not None),
+            "n_non_null_treatment": sum(1 for s in treat_runs if s.values.get(key) is not None),
+            "sum_baseline": _sum(base_runs, key),
+            "sum_treatment": _sum(treat_runs, key),
             "paired_deltas": [round(d, 6) for d in deltas],
             "n_paired_deltas": len(deltas),
             "mean_paired_delta": (round(sum(deltas) / len(deltas), 6) if deltas else None),
@@ -1014,17 +1018,21 @@ def write_metrics_json(
             # second from a smaller numerator.
             entry["automatic_sum_baseline"] = round(
                 (entry["sum_baseline"] or 0.0)
-                + sum(v for rid, v in overturned_here.items() if rid in {s.run_id for s in base}),
+                + sum(v for rid, v in overturned_here.items()
+                      if rid in {s.run_id for s in base_runs}),
                 6,
             )
             entry["automatic_sum_treatment"] = round(
                 (entry["sum_treatment"] or 0.0)
-                + sum(v for rid, v in overturned_here.items() if rid in {s.run_id for s in treat}),
+                + sum(v for rid, v in overturned_here.items()
+                      if rid in {s.run_id for s in treat_runs}),
                 6,
             )
             entry["manual_overturns"] = {
-                "baseline": [rid for rid in overturned_here if rid in {s.run_id for s in base}],
-                "treatment": [rid for rid in overturned_here if rid in {s.run_id for s in treat}],
+                "baseline": [rid for rid in overturned_here
+                             if rid in {s.run_id for s in base_runs}],
+                "treatment": [rid for rid in overturned_here
+                              if rid in {s.run_id for s in treat_runs}],
             }
         per_metric[key] = entry
 
@@ -1050,6 +1058,23 @@ def write_metrics_json(
 def _sum(scores: Sequence[RunScore], key: str) -> float | None:
     values = [s.values[key] for s in scores if s.values.get(key) is not None]
     return round(sum(values), 6) if values else None
+
+
+def _slot_values(scores: Sequence[RunScore], key: str) -> dict[tuple[str, int], float]:
+    """(scenario, repetition) -> the metric value, for runs that have one.
+
+    The address of a paired comparison. Two runs are the same run only when they
+    are the same scenario and the same repetition -- which is exactly what the
+    pre-registered design varies the skill across, and nothing else. Sorting two
+    lists and zipping them would *not* establish that, because the two
+    conditions lose runs at different places and their sorted lists therefore
+    hold different runners-up at every offset after the first gap.
+    """
+    return {
+        (s.scenario_id, s.repetition): s.values[key]
+        for s in scores
+        if s.values.get(key) is not None
+    }
 
 
 def evaluate(

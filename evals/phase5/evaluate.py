@@ -818,18 +818,36 @@ def load_runs(raw_dir: Path = RAW_DIR) -> list[dict[str, Any]]:
     correction -- but it carries ``superseded_by`` so aggregation can leave it
     out without editing it. This is the only thing standing between "a corrected
     run" and "two different answers to the same pair slot".
+
+    Records are resolved here by **filename**, never by ``record["run_id"]``. The
+    replacement for ``S01_clear_day__without_skill__rep1`` carries the *same*
+    ``run_id`` as the record it replaces -- only its filename differs, by the
+    ``__r2`` suffix -- so a run-id-keyed map resolves ``replaces`` to whichever
+    copy was loaded last and marks the *replacement* superseded while the original
+    keeps the pair slot. That is the opposite of the intent and it failed
+    silently: nothing raises, both records score, and every aggregate reads the
+    wrong one. Sorting is likewise made explicit rather than left to stability,
+    since two rows now share a run_id and the tie would otherwise be broken by
+    glob order.
     """
-    runs: list[dict[str, Any]] = []
-    records: dict[str, dict[str, Any]] = {}
+    runs: list[tuple[str, dict[str, Any]]] = []
+    by_file: dict[str, dict[str, Any]] = {}
     for path in sorted(Path(raw_dir).glob("*.json")):
         record = json.loads(path.read_text(encoding="utf-8"))
-        records[record["run_id"]] = record
-        runs.append(record)
-    for record in runs:
+        by_file[path.stem] = record
+        runs.append((path.stem, record))
+    for stem, record in runs:
         replaces = record.get("replaces")
-        if replaces and replaces in records:
-            records[replaces]["superseded_by"] = record["run_id"]
-    return sorted(runs, key=lambda record: record["run_id"])
+        # ``replaces`` names the file it corrects, and it must not name itself.
+        if not replaces or replaces not in by_file or replaces == stem:
+            continue
+        by_file[replaces]["superseded_by"] = stem
+    return [
+        record
+        for _, record in sorted(
+            runs, key=lambda item: (item[1]["run_id"], bool(item[1].get("replaces")))
+        )
+    ]
 
 
 def score_all(

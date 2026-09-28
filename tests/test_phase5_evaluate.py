@@ -502,6 +502,69 @@ def test_a_superseded_record_does_not_claim_the_pair_slot(tmp_path, monkeypatch)
     assert row["comparison"] == "compared"
 
 
+def test_a_replacement_with_the_same_run_id_still_supersedes_its_original(
+    tmp_path, monkeypatch
+) -> None:
+    """The real replacement record repeats the run_id of the record it corrects.
+
+    ``S01_clear_day__without_skill__rep1__r2.json`` is distinguished from
+    ``S01_clear_day__without_skill__rep1.json`` *only by its filename* -- its
+    ``run_id`` field is the same string. The test above cannot see this, because
+    ``_write_raw`` derives the filename from ``run_id`` and so keeps them in step.
+
+    Keying the lookup on ``run_id`` therefore resolved ``replaces`` to whichever
+    copy loaded last, marked the *replacement* superseded, and left the original
+    holding the pair slot -- silently, with both records scoring and nothing
+    raising. Nothing about the aggregate would have revealed it.
+    """
+    import csv as _csv
+
+    from evals.phase5 import evaluate as module
+
+    raw = tmp_path / "raw"
+    out = tmp_path / "out"
+    raw.mkdir(parents=True)
+    original = _record("S01_clear_day__without_skill__rep1", "S01_clear_day",
+                       "without_skill", 1, answer="**NOW** Risk Level: RED.")
+    replacement = _record("S01_clear_day__without_skill__rep1", "S01_clear_day",
+                          "without_skill", 1,
+                          replaces="S01_clear_day__without_skill__rep1")
+    (raw / "S01_clear_day__without_skill__rep1.json").write_text(
+        json.dumps(original, indent=2), encoding="utf-8"
+    )
+    (raw / "S01_clear_day__without_skill__rep1__r2.json").write_text(
+        json.dumps(replacement, indent=2), encoding="utf-8"
+    )
+    _write_raw(raw, [_record("S01_clear_day__with_skill__rep1", "S01_clear_day",
+                             "with_skill", 1)])
+
+    monkeypatch.setattr(module, "SUMMARY_PATH", out / "summary.csv")
+    monkeypatch.setattr(module, "PAIRED_PATH", out / "paired_results.csv")
+    monkeypatch.setattr(module, "MANUAL_REVIEW_PATH", out / "manual_review.csv")
+    monkeypatch.setattr(module, "METRICS_PATH", out / "metrics.json")
+
+    marked = module.load_runs(raw_dir=raw)
+    # Both records carry the same run_id, so they cannot be told apart by it --
+    # the marker has to name the file that supersedes it, once, on the original.
+    # Selected within the condition: `with_skill` sorts before `without_skill` and
+    # it, too, has no `replaces` field.
+    baseline = [r for r in marked if r["condition"] == "without_skill"]
+    original = next(r for r in baseline if not r.get("replaces"))
+    replacement = next(r for r in baseline if r.get("replaces"))
+    assert original["superseded_by"] == "S01_clear_day__without_skill__rep1__r2"
+    assert replacement.get("superseded_by") is None
+
+    scores = module.evaluate(raw_dir=raw)
+    assert [s.scored for s in scores
+            if s.scenario_id == "S01_clear_day" and s.repetition == 1
+            and s.condition == "without_skill"] == [False, True]
+
+    paired = list(_csv.DictReader((out / "paired_results.csv").read_text().splitlines()))
+    row = next(r for r in paired if r["metric"] == "M6_risk_level_exact_match")
+    assert row["without_skill"] == "1.000000", row     # the r2 record, not the RED one
+    assert row["comparison"] == "compared"
+
+
 def test_an_incomplete_pair_is_reported_as_incomplete_not_as_zero(tmp_path, monkeypatch) -> None:
     """A missing half is a hole in the evidence, never a score of zero."""
     import csv as _csv

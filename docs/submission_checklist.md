@@ -6,23 +6,34 @@ a reviewer can re-run them and get the same answer.
 
 | Field | Value |
 | --- | --- |
-| Final commit | HEAD. The Phase 6 freeze is `962a497` (**tag: `phase6-freeze`**); two documentation commits follow it — `1dd240d` (README to the submission standard + the three freeze-invalidated statements in the Phase 6 report corrected) and the commit adding this checklist. `git log --oneline --decorate -10` is the authority |
+| Final commit | HEAD. The Phase 6 freeze is `962a497` (**tag: `phase6-freeze`**); Phase 7 then added documentation only — `1dd240d` (README to the submission standard + the three freeze-invalidated statements in the Phase 6 report corrected), `4333f24` (this checklist) and `6d7494b` (the self-audit findings, their disclosures, and the six corrections to the paperwork). `git log --oneline --decorate -10` is the authority |
 | Phase 6 freeze commit | `962a497` — *docs: complete TrailGuard Phase 6 competition demo* |
-| Tags | `phase0-freeze`, `phase1-freeze`, `phase2-freeze`, `phase3-freeze`, `phase4-freeze`, `phase5-design-freeze`, `phase5-freeze`, `phase6-freeze` (HEAD is **two** commits after `phase6-freeze`) |
+| Tags | `phase0-freeze`, `phase1-freeze`, `phase2-freeze`, `phase3-freeze`, `phase4-freeze`, `phase5-design-freeze`, `phase5-freeze`, `phase6-freeze`. How far HEAD sits after `phase6-freeze` is **not stated as a number here**, because the number moves with every Phase 7 documentation commit and this file has already been wrong about it once — `git rev-list phase6-freeze..HEAD --count` is the authority |
 | Working tree | clean — `git status --short` empty, `git diff --stat` empty |
 | Remote | none. Nothing was ever pushed |
 | Test result | **1242 passed, 0 failed** — `pytest -q`, all offline (≈28 s) |
 | Demo smoke result | **1876 checks, RESULT: PASS** — `scripts/demo_smoke.py` |
 | Demo preflight result | **Verdict: RUNNABLE**, 24 ready, 0 missing, 1 degraded (`streamlit on PATH`; the operator uses `.venv/bin/streamlit` and `scripts/start_demo.sh` resolves it itself) |
 | Submission archive | `/home/asus_gx10/trailguard-submission.tar.gz` |
-| Archive size | recorded in the commit that follows this one |
-| SHA256 | recorded in the commit that follows this one |
+| Archive size | 758929 bytes (741.1 KiB) |
+| SHA256 | `7963a8e355869d9ec9aef6d8afa47809e127c253429aa266bc8c417a3148cd87` |
 
-The archive is rebuilt from the commit that corrects the audit findings above,
-and its digest, size and file count are written into the next commit, because an
-archive cannot contain the digest of itself. Rebuilding from any *later* commit
-gives a **different** digest; the commit that built the shipped archive is named
-in the footer below.
+```bash
+sha256sum /home/asus_gx10/trailguard-submission.tar.gz
+# 7963a8e355869d9ec9aef6d8afa47809e127c253429aa266bc8c417a3148cd87
+```
+
+196 files, 31 directories, 227 tar entries. **The archive is exactly the tracked
+set** — extracted and diffed against `git ls-files`, they are identical, so
+nothing untracked rode along. Verified absent: `.venv/`, `__pycache__/`,
+`.pytest_cache//`, `runs/`, a bare `.env` (only `.env.example`), `*.so`, `*.pth`,
+`*.safetensors`, model weights, HF cache, `logs/`.
+
+The archive was built from the commit that corrected the audit findings above,
+and its digest is written into the commit that follows, because an archive
+cannot contain the digest of itself. Rebuilding from any later commit gives a
+**different** digest; the commit that built the shipped archive is named in the
+footer below.
 
 ## The 19 checklist items
 
@@ -247,8 +258,8 @@ three gates were re-run after it: `1242 passed`, `1876 checks PASS`, preflight
 
 ---
 
-*Built from the tree at commit `1dd240d`, and rebuilt after the Phase 7
-self-audit. The archive therefore cannot contain this file, because an archive
-cannot contain the digest of itself. `sha256sum` the shipped archive to confirm
-the digest in the table above, and `git log --oneline --decorate -10` for the
-commit that built it.*
+*Built from the tree at commit `6d7494b`, which is the commit that corrected the
+self-audit findings. The archive therefore cannot contain this file, because an
+archive cannot contain the digest of itself. `sha256sum` the shipped archive to
+confirm the digest in the table above, and `git log --oneline --decorate -10` for
+the commit that built it.*

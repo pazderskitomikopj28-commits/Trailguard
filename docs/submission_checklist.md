@@ -15,8 +15,8 @@ a reviewer can re-run them and get the same answer.
 | Demo smoke result | **1876 checks, RESULT: PASS** — `scripts/demo_smoke.py` |
 | Demo preflight result | **Verdict: RUNNABLE**, 24 ready, 0 missing, 1 degraded (`streamlit on PATH`; the operator uses `.venv/bin/streamlit` and `scripts/start_demo.sh` resolves it itself) |
 | Submission archive | `/home/asus_gx10/trailguard-submission.tar.gz` |
-| Archive size | 760329 bytes (742.5 KiB) |
-| SHA256 | `c69d132048d59435d8aff42f9de81d623a7bec5bb5270afca0ddb26448a9b332` |
+| Archive size | 762395 bytes (744.5 KiB) |
+| SHA256 | `cabd78f1dced7e4675a13a6f0b70275542bba86a1fe316a2dc639b06759f72a4` |
 
 ```bash
 sha256sum /home/asus_gx10/trailguard-submission.tar.gz
@@ -379,11 +379,11 @@ three gates were re-run after it: `1242 passed`, `1876 checks PASS`, preflight
 
 ---
 
-*Built from the tree at commit `1a5c551` — the commit that recorded the identity
+*Built from the tree at commit `a1323fa` — the commit that recorded the identity
 rewrite. The archive therefore cannot contain this file, because an archive cannot
 contain the digest of itself; the `SHA256` row above is written by the commit that
-follows it (`14ee8d0`), and that single file is the only difference between HEAD and
-the tree inside the archive. **That is why this number is regenerated, not edited:**
+follows it, and that single file is the only difference between HEAD and the tree
+inside the archive. **That is why this number is regenerated, not edited:**
 the archive is rebuilt from the new HEAD's tree and the new digest goes into the
 commit that follows, so the two can never disagree. `sha256sum` the shipped archive
 to confirm the digest, and `git log --oneline --decorate -3` for the commit that

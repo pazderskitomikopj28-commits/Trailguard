@@ -6,8 +6,8 @@ a reviewer can re-run them and get the same answer.
 
 | Field | Value |
 | --- | --- |
-| Final commit | HEAD. The Phase 6 freeze is `962a497` (**tag: `phase6-freeze`**); Phase 7 then added documentation only — `1dd240d` (README to the submission standard + the three freeze-invalidated statements in the Phase 6 report corrected), `4333f24` (this checklist) and `6d7494b` (the self-audit findings, their disclosures, and the six corrections to the paperwork). `git log --oneline --decorate -10` is the authority |
-| Phase 6 freeze commit | `962a497` — *docs: complete TrailGuard Phase 6 competition demo* |
+| Final commit | HEAD. The Phase 6 freeze is **`8b3c8ac`** (**tag: `phase6-freeze`**; it was `962a497` before the identity rewrite recorded in item 20 below). Phase 7 then added documentation only — `fc61b1f` (README to the submission standard + the three freeze-invalidated statements in the Phase 6 report corrected), `8953d32` (this checklist) and `6046469` (the self-audit findings, their disclosures, and the six corrections to the paperwork). `git log --oneline --decorate -10` is the authority |
+| Phase 6 freeze commit | `8b3c8ac` — *docs: complete TrailGuard Phase 6 competition demo* (was `962a497` before the identity rewrite) |
 | Tags | `phase0-freeze`, `phase1-freeze`, `phase2-freeze`, `phase3-freeze`, `phase4-freeze`, `phase5-design-freeze`, `phase5-freeze`, `phase6-freeze`. How far HEAD sits after `phase6-freeze` is **not stated as a number here**, because the number moves with every Phase 7 documentation commit and this file has already been wrong about it once — `git rev-list phase6-freeze..HEAD --count` is the authority |
 | Working tree | clean — `git status --short` empty, `git diff --stat` empty |
 | Remote | none. Nothing was ever pushed |
@@ -139,8 +139,55 @@ footer below.
     re-normalised or re-rounded.
 18. **Known limitations disclosed, not hidden** — see below; they are also stated
     in the README and in `docs/phase6_final_report.md` §19.
-19. **Nothing pushed, no external action taken** — the repository has no remote.
-    Phase 7 ends here, waiting for human submission.
+19. **Nothing pushed, no external action taken** — the repository has no remote,
+    and Phase 7 has not created one. Every commit, the rewrite in item 20 and the
+    archive are local to this machine. Phase 7 ends here, waiting for a human
+    decision about publishing.
+20. **Commit identity rewritten for publication** — before the push the author
+    carries the laptop's name and a `localhost` address (`asus_gx10
+    <asus_gx10@localhost>` on 21 commits, `TrailGuard <trailguard@localhost>` on
+    one), which is not something to publish. All **22** commits and both annotated
+    taggers were rewritten to `pazderskitomikopj28
+    <pazderskitomikopj28@users.noreply.github.com>`, the GitHub noreply form, so no
+    personal address is exposed. **The rewrite changed identities and nothing
+    else**, and that was proved rather than assumed: every one of the 22 rewritten
+    trees was compared with the original and **all 22 are byte-identical**, the
+    working tree is still clean, and all three gates were re-run green afterwards
+    (`1242 passed`, `1876 checks PASS`, `RUNNABLE`). **This is why the commit hashes
+    in the Phase 5 and Phase 6 reports no longer resolve here** — e.g. the Phase 6
+    freeze, cited as `962a497` in those reports and in `docs/phase6_final_report.md`,
+    is `8b3c8ac` after the rewrite, with the tag `phase6-freeze` unchanged. Two
+    backups hold the pre-rewrite history:
+    `/home/asus_gx10/trailguard-backup-pre-rewrite-v2.bundle`
+    (`git bundle verify` → *The bundle records a complete history*) and
+    `/home/asus_gx10/trailguard-git-backup-pre-push.tar.gz`. **The archive is
+    unaffected**: its digest `7963a8e3…` still validates, because the rewrite moved
+    commit objects and not one byte of any tree.
+
+    The per-phase reports (`docs/phase1_`, `phase2_`, `phase5_`, `phase6_`) cite the
+    hashes that were true when they were written, and Phase 7 has not edited them to
+    chase a rewrite. So that a reviewer is never left at `unknown revision`, the
+    whole map is here — read out of git's own `.git/filter-repo/commit-map`, not
+    written from memory:
+
+    ```text
+    old       new        what it is
+    3c41ae3 -> 1d292f8   phase 0 specification            (tag phase0-freeze)
+    5a93fd7 -> a8acdf0   phase 1 deterministic core       (tag phase1-freeze)
+    7e550fd -> 6dc85a2   phase 2 weather & projection     (tag phase2-freeze)
+    39528ee -> c5e4dc0   phase 3 tagger                   (tag phase3-freeze, annotated)
+    81d7f09 -> f3bedf2   phase 4 tagger                   (tag phase4-freeze,  annotated)
+    e0fc196 -> f1365df   phase 5 design freeze            (tag phase5-design-freeze)
+    d9358e5 -> cbee3a1   phase 5 benchmark evaluation     (tag phase5-freeze)
+    962a497 -> 8b3c8ac   phase 6 competition demo         (tag phase6-freeze)
+    1dd240d -> fc61b1f   phase 7: README + the three freeze-invalidated statements
+    4333f24 -> 8953d32   phase 7: this checklist
+    6d7494b -> 6046469   phase 7: the self-audit findings and their disclosures
+    61e0edb -> d2335eb   phase 7: the rebuilt archive's digest, one commit before item 20
+    ```
+
+    Commit messages, trees, tags and dates are unchanged; only object hashes and
+    identities differ.
 
 ## What the Phase 7 self-audit found
 
@@ -258,8 +305,10 @@ three gates were re-run after it: `1242 passed`, `1876 checks PASS`, preflight
 
 ---
 
-*Built from the tree at commit `6d7494b`, which is the commit that corrected the
-self-audit findings. The archive therefore cannot contain this file, because an
-archive cannot contain the digest of itself. `sha256sum` the shipped archive to
-confirm the digest in the table above, and `git log --oneline --decorate -10` for
-the commit that built it.*
+*Built from the tree of `6046469` — the commit that corrected the self-audit
+findings, before the identity rewrite in item 20 and before this file recorded it.
+The rewrite changed no tree, so the digest above still validates for that tree; the
+hashes quoted in it are the post-rewrite ones, because those are the ones a reader
+of this repository will find. An archive cannot contain the digest of itself.
+`sha256sum` the shipped archive to confirm the digest, and
+`git log --oneline --decorate -10` for the commit that built it.*

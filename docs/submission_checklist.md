@@ -6,8 +6,8 @@ a reviewer can re-run them and get the same answer.
 
 | Field | Value |
 | --- | --- |
-| Final commit | HEAD. The Phase 6 freeze is **`8b3c8ac`** (**tag: `phase6-freeze`**; it was `962a497` before the identity rewrite recorded in item 20 below). Phase 7 then added documentation only — `fc61b1f` (README to the submission standard + the three freeze-invalidated statements in the Phase 6 report corrected), `8953d32` (this checklist) and `6046469` (the self-audit findings, their disclosures, and the six corrections to the paperwork). `git log --oneline --decorate -10` is the authority |
-| Phase 6 freeze commit | `8b3c8ac` — *docs: complete TrailGuard Phase 6 competition demo* (was `962a497` before the identity rewrite) |
+| Final commit | HEAD = **`14ee8d0`** — *docs: record the final archive digest, rebuilt from the rewritten tree*. Everything after the Phase 6 freeze is documentation: `e17d092` the Phase 6 competition demo (**tag: `phase6-freeze`**; it was `962a497` before the identity rewrite in item 20 below), `ae1cdac` the README at the submission standard plus the three freeze-invalidated statements in the Phase 6 report corrected, `b821c18` this checklist, `5d34b4d` the self-audit findings and the six corrections they forced on this repo's own paperwork, `67cf545` the rebuilt archive's digest, `1a5c551` the first identity rewrite and its hash map, `14ee8d0` the archive rebuilt again after the identity was corrected. **Any hash written into this file before item 20's second rewrite no longer resolves here** — item 20 lists the original hash beside the live one. `git log --oneline --decorate` is the authority |
+| Phase 6 freeze commit | `e17d092` — *docs: complete TrailGuard Phase 6 competition demo* (was `962a497` before the identity rewrite) |
 | Tags | `phase0-freeze`, `phase1-freeze`, `phase2-freeze`, `phase3-freeze`, `phase4-freeze`, `phase5-design-freeze`, `phase5-freeze`, `phase6-freeze`. How far HEAD sits after `phase6-freeze` is **not stated as a number here**, because the number moves with every Phase 7 documentation commit and this file has already been wrong about it once — `git rev-list phase6-freeze..HEAD --count` is the authority |
 | Working tree | clean — `git status --short` empty, `git diff --stat` empty |
 | Remote | none. Nothing was ever pushed |
@@ -117,7 +117,9 @@ footer below.
     deliberate fake placeholder to prove a credential never reaches an error
     message — that is the only credential-shaped literal in the tree, and it is a
     test fixture rather than a credential.
-15. **Submission archive clean** — 195 files. Excluded and verified absent:
+15. **Submission archive clean** — 196 files in 31 directories, which is exactly
+    `git ls-files`, verified byte-for-byte against the tree at `1a5c551` (see item
+    20 for why it is one commit behind HEAD). Excluded and verified absent:
     `.venv/`, `__pycache__/`, `.pytest_cache/`, `runs/phase5/raw/`, `runs/demo/`,
     `logs/`, `*.log`, `*.tmp`, `.env`, `*.so`, `*.pth`, `*.safetensors`, model
     weights, HF cache, the Qwen deployment directory. Included and verified
@@ -143,53 +145,123 @@ footer below.
     and Phase 7 has not created one. Every commit, the rewrite in item 20 and the
     archive are local to this machine. Phase 7 ends here, waiting for a human
     decision about publishing.
-20. **Commit identity rewritten for publication** — before the push the author
-    carries the laptop's name and a `localhost` address (`asus_gx10
-    <asus_gx10@localhost>` on 21 commits, `TrailGuard <trailguard@localhost>` on
-    one), which is not something to publish. All **22** commits and both annotated
-    taggers were rewritten to `pazderskitomikopj28
-    <pazderskitomikopj28@users.noreply.github.com>`, the GitHub noreply form, so no
-    personal address is exposed. **The rewrite changed identities and nothing
-    else**, and that was proved rather than assumed: every one of the 22 rewritten
-    trees was compared with the original and **all 22 are byte-identical**, the
-    working tree is still clean, and all three gates were re-run green afterwards
-    (`1242 passed`, `1876 checks PASS`, `RUNNABLE`). **This is why the commit hashes
-    in the Phase 5 and Phase 6 reports no longer resolve here** — e.g. the Phase 6
-    freeze, cited as `962a497` in those reports and in `docs/phase6_final_report.md`,
-    is `8b3c8ac` after the rewrite, with the tag `phase6-freeze` unchanged. Two
-    backups hold the pre-rewrite history:
-    `/home/asus_gx10/trailguard-backup-pre-rewrite-v2.bundle`
-    (`git bundle verify` → *The bundle records a complete history*) and
-    `/home/asus_gx10/trailguard-git-backup-pre-push.tar.gz`. **The archive is
-    unaffected by the rewrite itself: the archive built from `6046469`, whose
-    digest was `7963a8e3…`, still validated, because the rewrite moved commit
-    objects and not one byte of any tree. The shipped archive was then rebuilt
-    from the rewritten tree at `728cf11`, and its digest is in the table above.
+20. **Commit identity rewritten for publication — twice, and the first attempt was
+    wrong.** Before the push the author carried the laptop's name and a `localhost`
+    address (`asus_gx10 <asus_gx10@localhost>` on 21 commits,
+    `TrailGuard <trailguard@localhost>` on one — `5a93fd7`, Phase 1), which is not
+    something to publish. All **22** commits and both annotated taggers were
+    rewritten to the GitHub noreply form, so no personal address is exposed.
 
-    The per-phase reports (`docs/phase1_`, `phase2_`, `phase5_`, `phase6_`) cite the
-    hashes that were true when they were written, and Phase 7 has not edited them to
-    chase a rewrite. So that a reviewer is never left at `unknown revision`, the
-    whole map is here — read out of git's own `.git/filter-repo/commit-map`, not
-    written from memory:
+    **What went wrong, stated first because it is the more useful half.** The first
+    rewrite used `pazderskitomikopj28 <pazderskitomikopj28@users.noreply.github.com>`.
+    That username **does not exist on GitHub**. The GitHub public API returns 404
+    for `GET /users/pazderskitomikopj28` and 200 for `GET
+    /users/pazderskitomikopj28-commits` (id `309764434`, created 2026-07-27, after
+    the 2017-07-18 cut-off GitHub uses to decide the noreply form). So the correct
+    address is `309764434+pazderskitomikopj28-commits@users.noreply.github.com`.
+    A second rewrite, driven by a one-line mailmap, moved all 24 commits and both
+    annotated taggers to that identity. **The first version of this item recorded
+    the wrong one**, so anyone who replayed it would have published commits that do
+    not attach to any account.
+
+    **The rewrite changed identities and nothing else**, and that was proved rather
+    than assumed, twice. The matches are made by **tree hash**, which is
+    unambiguous here because all 24 trees are distinct (`git log --format=%T` → 24
+    trees, 24 distinct). First rewrite: the pre-rewrite history is 22 commits — the
+    v2 bundle records a complete history and `git rev-list --count main` inside it
+    answers 22 — and **all 22** matched a rewritten counterpart with a
+    byte-identical tree. Second rewrite: **all 24** trees byte-identical, subjects
+    unchanged, all 8 tags still on the commit they mark. After both rewrites the working tree is still clean and all
+    three gates were re-run green (`1242 passed`, `1876 checks PASS`,
+    `Verdict: RUNNABLE`). **This is why the commit hashes in the Phase 1–6 reports
+    no longer resolve here** — e.g. the Phase 6 freeze, cited as `962a497` in
+    `docs/phase6_final_report.md`, is `e17d092` now, with the tag
+    `phase6-freeze` unchanged.
+
+    Two backups hold the pre-rewrite history:
+    `/home/asus_gx10/trailguard-backup-pre-rewrite-v2.bundle`
+    (`git bundle verify` → *The bundle records a complete history*; it holds the 22
+    commits exactly as they were, with `asus_gx10 <asus_gx10@localhost>` and
+    `TrailGuard <trailguard@localhost>`), and
+    `/home/asus_gx10/trailguard-git-backup-pre-push.tar.gz`.
+    `/home/asus_gx10/trailguard-backup-before-email-fix.bundle` holds the
+    first-rewrite state — the wrong identity, which is why it is a backup and not a
+    source.
+
+    **The archive is unaffected by either rewrite**, because both moved commit
+    objects and not one byte of any tree. It was rebuilt from the tree at
+    `1a5c551` — one commit behind HEAD by design, since the commit that records an
+    archive's digest cannot be inside that archive — and verified equal to it
+    file-by-file: 196 files, all 196 `git ls-files`, every sha256 matching. Its
+    digest is in the table above.
+
+    The per-phase reports (`docs/phase1_`, `phase2_`, `phase5_`, `phase6_`), and
+    three files under `evals/phase5/` that record the commit they were run against,
+    cite the hashes that were true when they were written, and Phase 7 has not
+    edited them to chase a rewrite — 11 of the 196 tracked files carry a
+    pre-rewrite hash, listed at the end of this item. One tag message does too:
+    `phase4-freeze`, one of the two annotated tags, names the Phase 4 freeze as
+    commit `e3ca520`, which is `d091c8a` now — git-filter-repo rewrites a tag
+    object's `object` and `tagger` lines and never its text. (`b2630f3d` in that
+    same message is *not* dead: it is the first eight hex of `rules_v1.yaml`'s
+    sha256, and the file still hashes to it.) Every dead reference above resolves
+    in the v2 bundle. So that a reviewer is never left at `unknown revision`, the
+    whole map is here — read out of git's own
+    `.git/filter-repo/commit-map` and its `ref-map`, then re-derived by tree hash
+    and re-checked by hand, not written from memory:
 
     ```text
-    old       new        what it is
-    3c41ae3 -> 1d292f8   phase 0 specification            (tag phase0-freeze)
-    5a93fd7 -> a8acdf0   phase 1 deterministic core       (tag phase1-freeze)
-    7e550fd -> 6dc85a2   phase 2 weather & projection     (tag phase2-freeze)
-    39528ee -> c5e4dc0   phase 3 tagger                   (tag phase3-freeze, annotated)
-    81d7f09 -> f3bedf2   phase 4 tagger                   (tag phase4-freeze,  annotated)
-    e0fc196 -> f1365df   phase 5 design freeze            (tag phase5-design-freeze)
-    d9358e5 -> cbee3a1   phase 5 benchmark evaluation     (tag phase5-freeze)
-    962a497 -> 8b3c8ac   phase 6 competition demo         (tag phase6-freeze)
-    1dd240d -> fc61b1f   phase 7: README + the three freeze-invalidated statements
-    4333f24 -> 8953d32   phase 7: this checklist
-    6d7494b -> 6046469   phase 7: the self-audit findings and their disclosures
-    61e0edb -> d2335eb   phase 7: the rebuilt archive's digest, one commit before item 20
+    old       new       what it is
+    3c41ae3 -> 528f3c0  Phase 0 foundation                (tag phase0-freeze)
+    5a93fd7 -> 0224c05  Phase 1 deterministic core        (tag phase1-freeze)
+    7e550fd -> 0a4384e  Phase 2 weather & projection      (tag phase2-freeze)
+    64800f4 -> d04ce30  Phase 3 agent runtime             (tag phase3-freeze,
+                                                           annotated object
+                                                           39528ee -> 3db26b8)
+    e3ca520 -> d091c8a  Phase 4 local model integration   (tag phase4-freeze,
+                                                           annotated object
+                                                           81d7f09 -> b3e90be)
+    5dd3c12 -> 5bf5773  eval: pre-register the Phase 5 fair-skill benchmark
+    c305e95 -> 7fbf47b  eval: fix the Phase 5 record identity
+    bdb6c87 -> 132bde8  docs: Phase 5 benchmark protocol
+    16f45ec -> bba1804  phase5: resolve aggregator output at call time
+    f46cc1c -> 9ac5b50  phase5: state the reason a run was excluded
+    3c9142d -> aa88569  phase5: do not queue a rule-recall flag about an answer
+    fb11041 -> 0bbc3b5  phase5: classify a proven context-limit failure
+    fe11a68 -> dc8cd44  phase5: resolve the manual-review queue
+    ecd5e54 -> 2882d73  phase5: pair on the (scenario, repetition) slot
+    c9b95d0 -> 4207a2f  phase5: resolve `replaces` by filename
+    e0fc196 -> 8d059c9  Phase 5 design freeze              (tag phase5-design-freeze)
+    d9358e5 -> bb047f3  Phase 5 benchmark evaluation       (tag phase5-freeze)
+    962a497 -> e17d092  Phase 6 competition demo           (tag phase6-freeze)
+    1dd240d -> ae1cdac  Phase 7: README + the three freeze-invalidated statements
+    4333f24 -> b821c18  Phase 7: this checklist
+    6d7494b -> 5d34b4d  Phase 7: the self-audit findings and the six corrections
+    61e0edb -> 67cf545  Phase 7: the rebuilt archive's digest
     ```
 
     Commit messages, trees, tags and dates are unchanged; only object hashes and
-    identities differ.
+    identities differ. Two commits have no pre-rewrite counterpart, because they
+    were written **after** the first rewrite to record it: `1a5c551` (the rewrite
+    itself and the first, wrong version of this map) and `14ee8d0` (this
+    correction's archive digest).
+
+    Three further statements in the first version of this item no longer hold, and
+    are corrected here rather than quietly edited. It printed **12 rows** and called
+    that "the whole map" — the other ten Phase 5 commits were missing. Its `new`
+    column held the **first** rewrite's hashes (`1d292f8`, `a8acdf0`, …, `d2335eb`),
+    all 12 of which the second rewrite turned into dead references: `git rev-parse`
+    answers `unknown revision` for every one, which is precisely the failure this
+    item exists to prevent. And its two `tagger` rows (`39528ee`, `81d7f09`) were
+    annotated **tag-object** hashes printed as though they were commits, so the two
+    commits they stand for (`64800f4`, `e3ca520`) had no row at all.
+
+    The 11 tracked files that still cite a pre-rewrite hash:
+    `docs/phase1_final_report.md`, `docs/phase2_final_report.md`,
+    `docs/phase3_final_report.md`, `docs/phase4_final_report.md`,
+    `docs/phase5_final_report.md`, `docs/phase6_demo.md`,
+    `docs/phase6_final_report.md`, `evals/phase5/benchmark_manifest.json`,
+    `evals/phase5/manifest.py`, `evals/phase5/preflight.py`, and this file.
 
 ## What the Phase 7 self-audit found
 
@@ -307,9 +379,12 @@ three gates were re-run after it: `1242 passed`, `1876 checks PASS`, preflight
 
 ---
 
-*Built from the tree at commit `728cf11` — the commit that recorded the rebuild
-and the identity rewrite. The archive therefore cannot contain this file, because
-an archive cannot contain the digest of itself; the row above is written by the
-commit that follows, and that single file is the only difference between HEAD and
-the tree inside the archive. `sha256sum` the shipped archive to confirm the
-digest, and `git log --oneline --decorate -10` for the commit that built it.*
+*Built from the tree at commit `1a5c551` — the commit that recorded the identity
+rewrite. The archive therefore cannot contain this file, because an archive cannot
+contain the digest of itself; the `SHA256` row above is written by the commit that
+follows it (`14ee8d0`), and that single file is the only difference between HEAD and
+the tree inside the archive. **That is why this number is regenerated, not edited:**
+the archive is rebuilt from the new HEAD's tree and the new digest goes into the
+commit that follows, so the two can never disagree. `sha256sum` the shipped archive
+to confirm the digest, and `git log --oneline --decorate -3` for the commit that
+built it.*

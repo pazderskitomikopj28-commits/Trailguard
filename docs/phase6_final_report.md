@@ -689,7 +689,9 @@ byte for byte.
 ## 18. Competition Walkthrough
 
 Walked end to end against the **real** local model, not a stub. Roughly three
-minutes; steps 1–6 and 9 need no network and no model.
+minutes; steps 1–5 and 9 need no network and no model, and step 6 needs the local
+endpoint up. `docs/phase6_demo.md` states the same thing without the numbering and
+is correct: "the deterministic part needs no network and no model".
 
 1. **Preflight.** `Verdict: RUNNABLE`, 0 missing, 1 degraded, 24 ready.
 2. **Overview.** The one-sentence positioning, the verdict badge, the four-horizon
@@ -898,9 +900,11 @@ Phase 7 then ran, and did no more than the brief allowed. It froze the eight pat
 above as `962a497` / `phase6-freeze`, rewrote `README.md` to the submission
 standard, re-ran the three gates (1242 tests, 1876 smoke checks, RUNNABLE
 preflight), launched the real Streamlit server and verified all five screens plus
-one live Agent Mode run, swept the tree for secrets, and built the clean
-submission archive. No business code changed: the only tracked files modified after
-the freeze commit are `README.md` and `docs/submission_checklist.md`.
+a live Agent Mode run, swept the tree for secrets, and built the clean
+submission archive. No business code changed. `git diff --name-status
+phase6-freeze HEAD` reports exactly three tracked paths: `README.md` and this
+report were **modified**, and `docs/submission_checklist.md` was **added**. No
+rule, tool, contract, scenario, metric or model setting was touched.
 
 ---
 

@@ -159,6 +159,22 @@ read from, and which the demo never recomputes, re-normalises or re-rounds. The
 does not need them. The acceptance record is
 [`docs/phase6_final_report.md`](docs/phase6_final_report.md).
 
+## What TrailGuard is, and what it is not
+
+Required declaration (spec §27), stated up front rather than buried.
+
+TrailGuard **is** an outdoor-safety **decision-support prototype**.
+
+TrailGuard is **not**:
+
+- a medical device;
+- a rescue system;
+- an official warning system;
+- an accident-probability predictor.
+
+Everything simulated — user state, every demo threshold, and every benchmark
+scenario — is labelled as such throughout the repo, the demo and the evidence.
+
 ## Status
 
 Phases 0–6 complete and frozen (`phase0-freeze` … `phase6-freeze`).
@@ -181,6 +197,16 @@ Stated plainly, because a demo that hides them is not a demonstration.
   longer orchestration chain the Skill induces also brings substantial
   reliability and context-budget costs. Completion fell from 20 of 32 scored
   baseline runs to 2 of 32 with the skill.
+- **The skill's transfer across models is unmeasured.** Spec §14.2 asks for a
+  two-models × two-conditions matrix: the DGX Spark local model × without/with
+  skill, *and* the Step 5 Preview model × without/with skill. **Only the local
+  half ran.** The 87 recorded runs are all against the local
+  `qwen3-vl-30b-a3b`; the remote arm is recorded `NOT RUN` in
+  `evals/phase5/benchmark_manifest.json` and in
+  [`docs/phase5_final_report.md`](docs/phase5_final_report.md), and it was never
+  paired with the primary. So "the skill changes model behaviour" is shown for
+  one model on one endpoint, not demonstrated to be model-independent. (This is
+  why the result is reported as MIXED rather than as a win.)
 - **Competition thresholds are demo calibration.** Every threshold is
   calibration-marked and set for competition demonstration. They are not
   industry safety standards, and no scenario metric here may be read as a
@@ -188,7 +214,12 @@ Stated plainly, because a demo that hides them is not a demonstration.
 - **Scenarios are synthetic and the default weather mode is replay.** That is
   deliberate: it makes the demonstration deterministic and reproducible without a
   network or a model. The walkthrough reproduces a frozen measured result rather
-  than sampling a live one.
+  than sampling a live one. All 14 scenarios are frozen to a 2026-05-18 replay
+  instant, so **Live weather cannot succeed for any of them today** — the
+  forecast API answers HTTP 400 ("`start_date` is out of allowed range") for a
+  date ~4 months in the past. Live mode is therefore the *capability*
+  demonstration and the *failure* demonstration, never a working data path for
+  the frozen scenarios.
 - **Benchmark Integrity: PASS; Skill Effectiveness: MIXED.** Both halves are the
   headline, and neither is dropped.
 

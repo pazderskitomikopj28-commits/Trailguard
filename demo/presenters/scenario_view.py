@@ -86,7 +86,10 @@ WHAT_IT_DOES = [
 ]
 
 WHAT_IT_IS_NOT = [
-    "Not an accident probability. The soft score is a count-and-weight bookkeeping "
+    "An outdoor-safety decision-support prototype -- not a medical device, not a "
+    "rescue system, not an official warning system, and not an "
+    "accident-probability predictor (spec 27).",
+    "Not an accident probability: the soft score is a count-and-weight bookkeeping "
     "sum; the framework gives it no probability of anything.",
     "Not a routing engine and not a personalised pace model: the ETA is a frozen "
     "calibrated formula, and it says so.",

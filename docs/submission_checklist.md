@@ -15,12 +15,12 @@ a reviewer can re-run them and get the same answer.
 | Demo smoke result | **1876 checks, RESULT: PASS** — `scripts/demo_smoke.py` |
 | Demo preflight result | **Verdict: RUNNABLE**, 24 ready, 0 missing, 1 degraded (`streamlit on PATH`; the operator uses `.venv/bin/streamlit` and `scripts/start_demo.sh` resolves it itself) |
 | Submission archive | `/home/asus_gx10/trailguard-submission.tar.gz` |
-| Archive size | 758929 bytes (741.1 KiB) |
-| SHA256 | `7963a8e355869d9ec9aef6d8afa47809e127c253429aa266bc8c417a3148cd87` |
+| Archive size | 760329 bytes (742.5 KiB) |
+| SHA256 | `c69d132048d59435d8aff42f9de81d623a7bec5bb5270afca0ddb26448a9b332` |
 
 ```bash
 sha256sum /home/asus_gx10/trailguard-submission.tar.gz
-# 7963a8e355869d9ec9aef6d8afa47809e127c253429aa266bc8c417a3148cd87
+# c69d132048d59435d8aff42f9de81d623a7bec5bb5270afca0ddb26448a9b332
 ```
 
 196 files, 31 directories, 227 tar entries. **The archive is exactly the tracked
@@ -161,8 +161,10 @@ footer below.
     `/home/asus_gx10/trailguard-backup-pre-rewrite-v2.bundle`
     (`git bundle verify` → *The bundle records a complete history*) and
     `/home/asus_gx10/trailguard-git-backup-pre-push.tar.gz`. **The archive is
-    unaffected**: its digest `7963a8e3…` still validates, because the rewrite moved
-    commit objects and not one byte of any tree.
+    unaffected by the rewrite itself: the archive built from `6046469`, whose
+    digest was `7963a8e3…`, still validated, because the rewrite moved commit
+    objects and not one byte of any tree. The shipped archive was then rebuilt
+    from the rewritten tree at `728cf11`, and its digest is in the table above.
 
     The per-phase reports (`docs/phase1_`, `phase2_`, `phase5_`, `phase6_`) cite the
     hashes that were true when they were written, and Phase 7 has not edited them to
@@ -305,10 +307,9 @@ three gates were re-run after it: `1242 passed`, `1876 checks PASS`, preflight
 
 ---
 
-*Built from the tree of `6046469` — the commit that corrected the self-audit
-findings, before the identity rewrite in item 20 and before this file recorded it.
-The rewrite changed no tree, so the digest above still validates for that tree; the
-hashes quoted in it are the post-rewrite ones, because those are the ones a reader
-of this repository will find. An archive cannot contain the digest of itself.
-`sha256sum` the shipped archive to confirm the digest, and
-`git log --oneline --decorate -10` for the commit that built it.*
+*Built from the tree at commit `728cf11` — the commit that recorded the rebuild
+and the identity rewrite. The archive therefore cannot contain this file, because
+an archive cannot contain the digest of itself; the row above is written by the
+commit that follows, and that single file is the only difference between HEAD and
+the tree inside the archive. `sha256sum` the shipped archive to confirm the
+digest, and `git log --oneline --decorate -10` for the commit that built it.*

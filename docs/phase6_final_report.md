@@ -112,17 +112,25 @@ benchmark cannot be re-shaped by what the demo turned out to need.
 | Tag at HEAD | `phase5-freeze` |
 | Working tree at freeze | clean |
 | Remote | none — nothing was ever pushed |
-| Phase 6 commits | none. Per §63 the Phase 6 layer is unstaged and uncommitted |
+| Phase 6 commits, at the end of Phase 6 | none. Per §63 the Phase 6 layer was unstaged and uncommitted |
+| Phase 6 freeze commit (Phase 7 §2) | `962a497` — `docs: complete TrailGuard Phase 6 competition demo` |
+| Tag after the freeze | `phase6-freeze` |
 | `git diff --stat` | empty — **no tracked file was modified** |
-| Tracked files under `demo/` | 0 (the whole layer is untracked, so no frozen path can be in it) |
+| Tracked files under `demo/` | 0 during Phase 6 (the whole layer was untracked, so no frozen path could be in it); 19 after the Phase 6 freeze commit |
+| Files in the Phase 6 commit | 26, **8323 insertions, zero deletions** |
 
-`git status --short` at the end of Phase 6 lists exactly eight untracked top-level
+`git status --short` at the end of Phase 6 listed exactly eight untracked top-level
 paths — `demo/`, `docs/phase6_demo.md`, `docs/phase6_final_report.md`,
 `scripts/demo_preflight.py`, `scripts/demo_smoke.py`, `scripts/start_demo.sh`,
 `tests/test_demo_presenters.py`, `tests/test_demo_ui.py`. Because `git diff --stat`
 is empty, "no frozen asset
 changed" is proved by the tool rather than asserted by me; section 17 records the
-hashes independently.
+hashes independently. Phase 7 §2 then froze exactly those eight paths and nothing
+else — no `git add .`, no `runs/`, no evidence, no credential — with **zero
+deletions**, so the commit cannot have removed or rewritten a frozen asset even in
+principle. The staging was reviewed path by path first: 26 files, 8323 insertions,
+and the only additions were demo code, its gate and operator scripts, its two test
+files, and the two Phase 6 documents.
 
 The demo layer is **18 Python modules and 4389 lines**, plus two operator scripts
 and a launcher:
@@ -795,8 +803,10 @@ discount everything else on the screen.
 
 **Process limits**
 
-16. **The Phase 6 layer is uncommitted.** Per §63 it is staged and committed by
-    nobody; `git status --short` shows eight untracked paths.
+16. **The Phase 6 layer was uncommitted at the end of Phase 6** — per §63 it was
+    staged and committed by nobody; `git status --short` then showed eight untracked
+    paths. Phase 7 §2 froze those exact eight paths as `962a497` / `phase6-freeze`
+    (26 files, 8323 insertions, zero deletions). Nothing else was staged.
 17. **The Phase 5 raw-evidence archive is outside the repo.** `runs/` is gitignored
     by the Phase 13 policy, so the archive at
     `/home/asus_gx10/trailguard-phase5-raw-evidence.tar.gz` (189278 bytes,
@@ -841,6 +851,16 @@ discount everything else on the screen.
     `docs/phase5_evidence/metrics.json` or a fresh run of the chain and the agent;
     nothing in `demo/`, in the tests or in `docs/phase5_evidence/` was changed to
     accommodate any of them.
+21. **A further three statements were correct when written and were invalidated by
+    Phase 7's own freeze, not by a mistake.** §1's "Phase 6 commits: none" and "0
+    tracked files under `demo/`", §19 item 16's "the Phase 6 layer is uncommitted",
+    and the closing footer's "nothing in this report was committed" all described the
+    end of Phase 6 faithfully. Phase 7 §2 then committed the eight untracked paths as
+    `962a497` / `phase6-freeze` with zero deletions, which made all three false. They
+    are now written in the past tense with the freeze recorded beside them rather
+    than quietly deleted — the history of *why* the layer was uncommitted is the
+    point of the statement. No number in any of the three was recalculated; only the
+    repository state moved.
 
 ## 20. Final Verdict
 
@@ -874,7 +894,15 @@ screen where four metrics improved and four regressed on the same screen.
 presentation material, no re-benchmark, no Qwen tuning. Waiting for human
 acceptance.
 
+Phase 7 then ran, and did no more than the brief allowed. It froze the eight paths
+above as `962a497` / `phase6-freeze`, rewrote `README.md` to the submission
+standard, re-ran the three gates (1242 tests, 1876 smoke checks, RUNNABLE
+preflight), launched the real Streamlit server and verified all five screens plus
+one live Agent Mode run, swept the tree for secrets, and built the clean
+submission archive. No business code changed: the only tracked files modified after
+the freeze commit are `README.md` and `docs/submission_checklist.md`.
+
 ---
 
-*Nothing in this report was committed. `git status --short` is unchanged from the
-eight untracked Phase 6 paths listed in section 1.*
+*The Phase 6 layer was committed by Phase 7 §2 as `962a497` / `phase6-freeze`, and
+tagged. Nothing was pushed; the repository still has no remote.*
